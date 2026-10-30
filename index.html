@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Lietuvos orai ir upės</title>
+<meta name="description" content="Orų prognozė, meteorologijos stočių stebėjimai ir upių vandens lygiai iš LHMT atvirojo API.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Išdėstymas: viršuje skirtukai, po jais santrauka (didelis skaičius + kortelės), tada grafikas ir lentelė. */
+:root {
+  --bg: #eef3f5;
+  --surface: #ffffff;
+  --ink: #0f1f29;
+  --muted: #566a77;
+  --line: #d5e0e6;
+  --accent: #0a7584;
+  --accent-soft: #dceff1;
+  --warm: #c9512a;
+  --rain: #2d6bd1;
+  --good: #1f8a4c;
+  --bad: #b8322a;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c151b; --surface: #13212a; --ink: #e4edf1; --muted: #92a6b2; --line: #22343f;
+    --accent: #3db4c3; --accent-soft: #163640; --warm: #f08a5d; --rain: #6b9df2;
+    --good: #4cc27f; --bad: #f07267; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body);
+  padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(16px, env(safe-area-inset-left, 0px));
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding-block: 24px 40px; display: grid; gap: 20px; }
+header { display: grid; gap: 6px; }
+.eyebrow { font: 600 11px/1 var(--font-data); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 800 clamp(26px, 5vw, 38px)/1.1 var(--font-display); margin: 0; letter-spacing: -.02em; text-wrap: balance; }
+h2 { font: 700 18px/1.2 var(--font-display); margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 0; max-width: 62ch; }
+
+nav.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+nav.tabs button {
+  appearance: none; border: 0; background: none; color: var(--muted); cursor: pointer;
+  font: 600 14px var(--font-body); padding: 10px 14px; border-bottom: 3px solid transparent; white-space: nowrap;
+}
+nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+nav.tabs button:focus-visible, select:focus-visible, input:focus-visible, th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+section.view { display: grid; gap: 18px; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.field { display: grid; gap: 4px; min-width: 0; flex: 1 1 240px; max-width: 420px; }
+.field label { font: 600 11px var(--font-data); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+input, select {
+  font: 15px var(--font-body); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; width: 100%;
+}
+.btn {
+  appearance: none; border: 1px solid var(--accent); background: var(--accent); color: var(--surface);
+  font: 600 14px var(--font-body); border-radius: 8px; padding: 9px 14px; cursor: pointer;
+}
+.btn.ghost { background: transparent; color: var(--accent); }
+
+.hero { display: grid; grid-template-columns: auto 1fr; gap: 6px 24px; align-items: end; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+.hero .big { font: 700 clamp(44px, 9vw, 64px)/1 var(--font-data); letter-spacing: -.03em; }
+.hero .big small { font-size: .4em; color: var(--muted); margin-left: 2px; }
+.hero .meta { display: grid; gap: 2px; min-width: 0; }
+.hero .meta strong { font: 700 18px var(--font-display); }
+.hero .facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 14px; }
+.hero .facts b { color: var(--ink); font: 600 14px var(--font-data); }
+@media (max-width: 480px) { .hero { grid-template-columns: 1fr; } }
+
+.days { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.day { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; }
+.day .dname { font: 600 12px var(--font-data); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.day .temps { font: 600 17px var(--font-data); font-variant-numeric: tabular-nums; }
+.day .temps span { color: var(--muted); font-weight: 400; }
+.day .cond { font-size: 13px; }
+.day .pr { font: 12px var(--font-data); color: var(--rain); }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.panel header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.note { color: var(--muted); font-size: 13px; }
+.chart-box { position: relative; height: 280px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 2px; }
+.stat .k { font: 600 11px var(--font-data); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.stat .v { font: 700 22px var(--font-data); font-variant-numeric: tabular-nums; }
+.stat .w { font-size: 13px; color: var(--muted); }
+
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td.num, th.num { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+th { font: 600 11px var(--font-data); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+th button { all: unset; cursor: pointer; }
+th button::after { content: ""; }
+th[aria-sort="ascending"] button::after { content: " ▲"; }
+th[aria-sort="descending"] button::after { content: " ▼"; }
+tbody tr:hover { background: var(--accent-soft); }
+
+.status { padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+.status.error { border-color: var(--bad); color: var(--bad); }
+.pill { display: inline-block; font: 600 11px var(--font-data); padding: 2px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+.trend-up { color: var(--rain); } .trend-down { color: var(--warm); }
+
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 14px; }
+footer a { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">LHMT atvirieji duomenys</span>
+    <h1>Lietuvos orai ir upės</h1>
+    <p class="sub">Orų prognozė bet kuriai Lietuvos vietovei, naujausi meteorologijos stočių stebėjimai ir upių vandens lygiai. Duomenys kraunami tiesiogiai iš Lietuvos hidrometeorologijos tarnybos.</p>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-prognoze" aria-controls="view-prognoze" aria-selected="true">Prognozė</button>
+    <button role="tab" id="tab-stotys" aria-controls="view-stotys" aria-selected="false">Stotys dabar</button>
+    <button role="tab" id="tab-upes" aria-controls="view-upes" aria-selected="false">Upės</button>
+  </nav>
+
+  <!-- PROGNOZĖ -->
+  <section class="view" id="view-prognoze" role="tabpanel" aria-labelledby="tab-prognoze">
+    <form class="controls" id="place-form">
+      <div class="field">
+        <label for="place-input">Vietovė</label>
+        <input id="place-input" list="place-list" placeholder="Pradėkite rašyti, pvz. Kaunas" autocomplete="off">
+        <datalist id="place-list"></datalist>
+      </div>
+      <button class="btn" type="submit">Rodyti</button>
+    </form>
+    <div id="fc-status" class="status">Įkeliama prognozė…</div>
+    <div id="fc-hero" class="hero" hidden></div>
+    <div id="fc-days" class="days" hidden></div>
+    <div class="panel" id="fc-panel" hidden>
+      <header><h2>Temperatūra ir krituliai kas valandą</h2><span class="note" id="fc-created"></span></header>
+      <div class="chart-box"><canvas id="fc-chart" aria-label="Valandinė temperatūros ir kritulių prognozė"></canvas></div>
+    </div>
+  </section>
+
+  <!-- STOTYS -->
+  <section class="view" id="view-stotys" role="tabpanel" aria-labelledby="tab-stotys" hidden>
+    <div id="st-status" class="status">Įkeliami stočių duomenys…</div>
+    <div id="st-stats" class="stats" hidden></div>
+    <div class="panel" id="st-panel" hidden>
+      <header><h2>Naujausi stebėjimai</h2><span class="note">Spauskite stulpelio pavadinimą, kad surikiuotumėte</span></header>
+      <div class="table-wrap">
+        <table id="st-table">
+          <thead><tr>
+            <th data-key="name" aria-sort="ascending"><button type="button">Stotis</button></th>
+            <th class="num" data-key="airTemperature"><button type="button">Temp. °C</button></th>
+            <th class="num" data-key="feelsLikeTemperature"><button type="button">Juntama</button></th>
+            <th class="num" data-key="windSpeed"><button type="button">Vėjas m/s</button></th>
+            <th class="num" data-key="windGust"><button type="button">Gūsiai</button></th>
+            <th data-key="windDirection"><button type="button">Kryptis</button></th>
+            <th class="num" data-key="relativeHumidity"><button type="button">Drėgmė %</button></th>
+            <th class="num" data-key="seaLevelPressure"><button type="button">Slėgis hPa</button></th>
+            <th class="num" data-key="precipitation"><button type="button">Krituliai mm</button></th>
+            <th data-key="conditionCode"><button type="button">Sąlygos</button></th>
+            <th data-key="time"><button type="button">Laikas</button></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- UPĖS -->
+  <section class="view" id="view-upes" role="tabpanel" aria-labelledby="tab-upes" hidden>
+    <div class="controls">
+      <div class="field">
+        <label for="hydro-select">Vandens matavimo stotis</label>
+        <select id="hydro-select"><option>Įkeliama…</option></select>
+      </div>
+      <div class="field" style="flex:0 1 160px">
+        <label for="hydro-days">Laikotarpis</label>
+        <select id="hydro-days">
+          <option value="3">3 dienos</option>
+          <option value="7" selected>7 dienos</option>
+          <option value="14">14 dienų</option>
+          <option value="30">30 dienų</option>
+        </select>
+      </div>
+    </div>
+    <div id="hy-status" class="status">Įkeliamos vandens matavimo stotys…</div>
+    <div id="hy-stats" class="stats" hidden></div>
+    <div class="panel" id="hy-panel" hidden>
+      <header><h2 id="hy-title">Vandens lygis</h2><span class="note" id="hy-range"></span></header>
+      <div class="chart-box"><canvas id="hy-chart" aria-label="Vandens lygio ir temperatūros grafikas"></canvas></div>
+    </div>
+  </section>
+
+  <footer>
+    Duomenų šaltinis: <a href="https://www.meteo.lt" target="_blank" rel="noopener">Lietuvos hidrometeorologijos tarnyba prie Aplinkos ministerijos (LHMT)</a>, <a href="https://api.meteo.lt" target="_blank" rel="noopener">api.meteo.lt</a>.
+    Laikas rodomas Lietuvos laiku. <span id="api-mode"></span>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+/* ===================== NUSTATYMAI ===================== */
+const CONFIG = {
+  // Tiesioginis LHMT API adresas.
+  apiBase: 'https://api.meteo.lt/v1',
+  // Jei naršyklė blokuoja tiesiogines užklausas (CORS), įrašykite savo
+  // Cloudflare Worker adresą, pvz. 'https://meteo-proxy.vardas.workers.dev/v1'
+  proxyBase: '',
+  defaultPlace: 'vilnius',
+  tz: 'Europe/Vilnius',
+};
+/* ====================================================== */
+
+const qs = new URLSearchParams(location.search);
+let apiBase = qs.get('api') || CONFIG.apiBase;
+
+const CONDITIONS = {
+  'clear': 'Giedra', 'partly-cloudy': 'Mažai debesuota', 'cloudy-with-sunny-intervals': 'Debesuota su pragiedruliais',
+  'variable-cloudiness': 'Nepastoviai debesuota', 'cloudy': 'Debesuota', 'thunder': 'Perkūnija',
+  'isolated-thunderstorms': 'Trumpas lietus su perkūnija', 'thunderstorms': 'Lietus su perkūnija',
+  'heavy-rain-with-thunderstorms': 'Smarkus lietus su perkūnija', 'light-rain': 'Nedidelis lietus',
+  'rain': 'Lietus', 'heavy-rain': 'Smarkus lietus', 'rain-showers': 'Trumpas lietus',
+  'light-rain-at-times': 'Protarpiais nedidelis lietus', 'rain-at-times': 'Protarpiais lietus',
+  'light-sleet': 'Nedidelė šlapdriba', 'sleet': 'Šlapdriba', 'sleet-at-times': 'Protarpiais šlapdriba',
+  'sleet-showers': 'Trumpa šlapdriba', 'freezing-rain': 'Lijundra', 'hail': 'Kruša',
+  'light-snow': 'Nedidelis sniegas', 'snow': 'Sniegas', 'heavy-snow': 'Smarkus sniegas',
+  'snow-showers': 'Trumpas sniegas', 'snow-at-times': 'Protarpiais sniegas',
+  'light-snow-at-times': 'Protarpiais nedidelis sniegas', 'snowstorm': 'Pūga', 'mist': 'Rūkana',
+  'fog': 'Rūkas', 'squall': 'Škvalas', 'na': '—'
+};
+const cond = c => (c && CONDITIONS[c]) || (c ? c.replace(/-/g, ' ') : '—');
+
+/* ---------- Užklausos ---------- */
+const memo = new Map();
+async function getJSON(url) {
+  const r = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+  return r.json();
+}
+function api(path) {
+  if (memo.has(path)) return memo.get(path);
+  const p = (async () => {
+    const base = apiBase;
+    try { return await getJSON(base + path); }
+    catch (e) {
+      if (!e.status && CONFIG.proxyBase && base !== CONFIG.proxyBase) {
+        apiBase = CONFIG.proxyBase; showApiMode();
+        return await getJSON(CONFIG.proxyBase + path);
+      }
+      throw e;
+    }
+  })();
+  memo.set(path, p);
+  p.catch(() => memo.delete(path));
+  return p;
+}
+async function pool(items, limit, fn, onProgress) {
+  const out = new Array(items.length); let i = 0, done = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i++;
+      try { out[idx] = await fn(items[idx]); } catch (e) { out[idx] = null; }
+      done++; onProgress && onProgress(done, items.length);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+function errorText(e) {
+  if (e && e.status === 429) return 'Per daug užklausų į LHMT API. Palaukite minutę ir atnaujinkite puslapį.';
+  if (e && e.status === 404) return 'Duomenų nerasta (404). Galbūt ši stotis ar vietovė šiuo metu duomenų neteikia.';
+  if (e && e.status) return 'LHMT serveris grąžino klaidą (' + e.status + '). Pabandykite vėliau.';
+  return 'Nepavyko pasiekti api.meteo.lt. Tikėtina, kad naršyklė blokuoja tiesiogines užklausas į kitą svetainę (CORS). '
+    + 'Įjunkite tarpinį serverį: žr. README failą (Cloudflare Worker) ir įrašykite jo adresą į CONFIG.proxyBase.';
+}
+function setStatus(id, text, isError) {
+  const el = document.getElementById(id);
+  el.hidden = !text; el.textContent = text || '';
+  el.classList.toggle('error', !!isError);
+}
+function showApiMode() {
+  document.getElementById('api-mode').textContent =
+    apiBase === CONFIG.proxyBase ? 'Duomenys gaunami per tarpinį serverį.' : '';
+}
+
+/* ---------- Laikas ir formatavimas ---------- */
+const parseUtc = s => new Date(String(s).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? '' : 'Z'));
+const fmtTime = d => d.toLocaleTimeString('lt-LT', { timeZone: CONFIG.tz, hour: '2-digit', minute: '2-digit' });
+const fmtDateTime = d => d.toLocaleString('lt-LT', { timeZone: CONFIG.tz, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+const dayKey = d => d.toLocaleDateString('sv-SE', { timeZone: CONFIG.tz });
+const dayName = d => d.toLocaleDateString('lt-LT', { timeZone: CONFIG.tz, weekday: 'short' });
+const dayNum = d => d.toLocaleDateString('lt-LT', { timeZone: CONFIG.tz, month: '2-digit', day: '2-digit' });
+const hourLocal = d => Number(d.toLocaleString('en-GB', { timeZone: CONFIG.tz, hour: '2-digit', hour12: false }));
+const num = (v, dp = 1) => (v === null || v === undefined || isNaN(v)) ? '—' : Number(v).toFixed(dp).replace('.', ',');
+const isNum = v => typeof v === 'number' && !isNaN(v);
+const COMPASS = ['Š', 'ŠR', 'R', 'PR', 'P', 'PV', 'V', 'ŠV'];
+const compass = deg => isNum(deg) ? COMPASS[Math.round(deg / 45) % 8] : '—';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ---------- Grafikai ---------- */
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const charts = {};
+const builders = {};
+function drawChart(id, build) {
+  if (!window.Chart) return;
+  builders[id] = build;
+  const config = build();
+  if (charts[id]) charts[id].destroy();
+  const ink = css('--muted'), grid = css('--line');
+  Chart.defaults.font.family = css('--font-body');
+  Chart.defaults.color = ink;
+  for (const ax of Object.values(config.options.scales || {})) {
+    ax.grid = Object.assign({ color: grid }, ax.grid || {});
+    ax.ticks = Object.assign({ color: ink }, ax.ticks || {});
+    if (ax.title) ax.title.color = ink;
+  }
+  charts[id] = new Chart(document.getElementById(id), config);
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  for (const id of Object.keys(builders)) drawChart(id, builders[id]);
+});
+
+/* ================= PROGNOZĖ ================= */
+let places = [];
+async function loadPlaces() {
+  places = await api('/places');
+  const dl = document.getElementById('place-list');
+  dl.innerHTML = places
+    .filter(p => p.countryCode === 'LT' || !p.countryCode)
+    .map(p => `<option value="${esc(p.name)}${p.administrativeDivision ? ' (' + esc(p.administrativeDivision) + ')' : ''}"></option>`).join('');
+}
+function findPlace(text) {
+  const t = text.trim().toLowerCase();
+  if (!t) return null;
+  const nameOnly = t.replace(/\s*\(.*\)\s*$/, '');
+  const div = (t.match(/\((.*)\)/) || [])[1];
+  return places.find(p => p.name.toLowerCase() === nameOnly && (!div || (p.administrativeDivision || '').toLowerCase() === div))
+      || places.find(p => p.code.toLowerCase() === t)
+      || places.find(p => p.name.toLowerCase().startsWith(nameOnly));
+}
+async function showForecast(code) {
+  setStatus('fc-status', 'Įkeliama prognozė…');
+  try {
+    const data = await api('/places/' + encodeURIComponent(code) + '/forecasts/long-term');
+    const ts = (data.forecastTimestamps || []).map(f => ({ ...f, t: parseUtc(f.forecastTimeUtc) }));
+    if (!ts.length) throw Object.assign(new Error('empty'), { status: 404 });
+    const now = Date.now();
+    const cur = ts.find(f => f.t.getTime() >= now - 30 * 60e3) || ts[0];
+    const place = data.place || {};
+    document.getElementById('place-input').value = place.name || code;
+    try { localStorage.setItem('meteo-place', code); } catch (e) {}
+    const u = new URL(location.href); u.searchParams.set('vieta', code); history.replaceState(null, '', u);
+
+    // Santrauka
+    const hero = document.getElementById('fc-hero');
+    hero.innerHTML = `
+      <div class="big">${num(cur.airTemperature, 0)}<small>°C</small></div>
+      <div class="meta">
+        <strong>${esc(place.name || code)}${place.administrativeDivision ? ', ' + esc(place.administrativeDivision) : ''}</strong>
+        <span>${esc(cond(cur.conditionCode))} · ${fmtDateTime(cur.t)}</span>
+      </div>
+      <div class="facts">
+        <span>Juntama <b>${num(cur.feelsLikeTemperature, 0)} °C</b></span>
+        <span>Vėjas <b>${num(cur.windSpeed, 0)} m/s</b>, gūsiai <b>${num(cur.windGust, 0)}</b> (${compass(cur.windDirection)})</span>
+        <span>Drėgmė <b>${num(cur.relativeHumidity, 0)} %</b></span>
+        <span>Slėgis <b>${num(cur.seaLevelPressure, 0)} hPa</b></span>
+        <span>Debesuotumas <b>${num(cur.cloudCover, 0)} %</b></span>
+      </div>`;
+    hero.hidden = false;
+
+    // Dienos
+    const byDay = new Map();
+    for (const f of ts) { const k = dayKey(f.t); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(f); }
+    const daysEl = document.getElementById('fc-days');
+    daysEl.innerHTML = [...byDay.values()].slice(0, 8).map(list => {
+      const temps = list.map(f => f.airTemperature).filter(isNum);
+      const pr = list.reduce((s, f) => s + (isNum(f.totalPrecipitation) ? f.totalPrecipitation : 0), 0);
+      const daytime = list.filter(f => { const h = hourLocal(f.t); return h >= 9 && h <= 18; });
+      const src = daytime.length ? daytime : list, counts = {};
+      src.forEach(f => counts[f.conditionCode] = (counts[f.conditionCode] || 0) + 1);
+      const main = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+      const d = list[0].t;
+      return `<div class="day">
+        <span class="dname">${esc(dayName(d))} ${esc(dayNum(d))}</span>
+        <span class="temps">${num(Math.max(...temps), 0)}° <span>/ ${num(Math.min(...temps), 0)}°</span></span>
+        <span class="cond">${esc(cond(main))}</span>
+        <span class="pr">${pr > 0.05 ? num(pr, 1) + ' mm' : 'be kritulių'}</span>
+      </div>`;
+    }).join('');
+    daysEl.hidden = false;
+
+    // Grafikas
+    document.getElementById('fc-created').textContent = data.forecastCreationTimeUtc
+      ? 'Prognozė sudaryta ' + fmtDateTime(parseUtc(data.forecastCreationTimeUtc)) : '';
+    document.getElementById('fc-panel').hidden = false;
+    const build = () => ({
+      type: 'bar',
+      data: {
+        labels: ts.map(f => dayName(f.t) + ' ' + fmtTime(f.t)),
+        datasets: [
+          { type: 'line', label: 'Temperatūra, °C', data: ts.map(f => f.airTemperature), yAxisID: 'y',
+            borderColor: css('--warm'), backgroundColor: css('--warm'), borderWidth: 2, pointRadius: 0, tension: .3 },
+          { type: 'bar', label: 'Krituliai, mm', data: ts.map(f => f.totalPrecipitation), yAxisID: 'y2',
+            backgroundColor: css('--rain'), borderRadius: 2 }
+        ]
+      },
+      options: {
+        maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } },
+          y: { position: 'left', title: { display: true, text: '°C' } },
+          y2: { position: 'right', beginAtZero: true, suggestedMax: 2, title: { display: true, text: 'mm' }, grid: { display: false } }
+        }
+      }
+    });
+    drawChart('fc-chart', build);
+    setStatus('fc-status', '');
+  } catch (e) {
+    console.error(e);
+    setStatus('fc-status', errorText(e), true);
+  }
+}
+document.getElementById('place-form').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const p = findPlace(document.getElementById('place-input').value);
+  if (p) showForecast(p.code);
+  else setStatus('fc-status', 'Tokios vietovės nerasta. Pasirinkite iš siūlomo sąrašo.', true);
+});
+
+/* ================= STOTYS ================= */
+let stationRows = [], sortKey = 'name', sortDir = 1, stationsLoaded = false;
+async function loadStations() {
+  if (stationsLoaded) return; stationsLoaded = true;
+  try {
+    const stations = await api('/stations');
+    setStatus('st-status', `Įkeliami stebėjimai: 0 / ${stations.length}`);
+    const results = await pool(stations, 6,
+      s => api('/stations/' + encodeURIComponent(s.code) + '/observations/latest'),
+      (d, n) => setStatus('st-status', `Įkeliami stebėjimai: ${d} / ${n}`));
+    stationRows = stations.map((s, i) => {
+      const obs = results[i]?.observations || [];
+      const last = obs[obs.length - 1];
+      if (!last) return null;
+      return { name: s.name, code: s.code, ...last, time: parseUtc(last.observationTimeUtc) };
+    }).filter(Boolean);
+    if (!stationRows.length) throw results.find(Boolean) ? new Error('empty') : new Error('network');
+    renderStationStats(); renderStationTable();
+    document.getElementById('st-panel').hidden = false;
+    const failed = stations.length - stationRows.length;
+    setStatus('st-status', failed ? `${failed} stočių duomenų gauti nepavyko.` : '');
+  } catch (e) {
+    console.error(e); stationsLoaded = false;
+    setStatus('st-status', errorText(e), true);
+  }
+}
+function extreme(key, fn) {
+  const rows = stationRows.filter(r => isNum(r[key]));
+  if (!rows.length) return null;
+  return rows.reduce((a, b) => fn(b[key], a[key]) ? b : a);
+}
+function renderStationStats() {
+  const warm = extreme('airTemperature', (a, b) => a > b);
+  const cold = extreme('airTemperature', (a, b) => a < b);
+  const wind = extreme('windGust', (a, b) => a > b) || extreme('windSpeed', (a, b) => a > b);
+  const temps = stationRows.map(r => r.airTemperature).filter(isNum);
+  const avg = temps.reduce((a, b) => a + b, 0) / (temps.length || 1);
+  const wet = stationRows.filter(r => isNum(r.precipitation) && r.precipitation > 0).length;
+  const card = (k, v, w) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span><span class="w">${w}</span></div>`;
+  document.getElementById('st-stats').innerHTML = [
+    card('Vidutinė temperatūra', num(avg, 1) + ' °C', temps.length + ' stotys'),
+    warm ? card('Šilčiausia', num(warm.airTemperature, 1) + ' °C', esc(warm.name)) : '',
+    cold ? card('Šalčiausia', num(cold.airTemperature, 1) + ' °C', esc(cold.name)) : '',
+    wind ? card('Stipriausi gūsiai', num(wind.windGust ?? wind.windSpeed, 1) + ' m/s', esc(wind.name)) : '',
+    card('Lyja ar sninga', wet + ' stotyse', 'per paskutinę valandą'),
+  ].join('');
+  document.getElementById('st-stats').hidden = false;
+}
+function renderStationTable() {
+  const rows = [...stationRows].sort((a, b) => {
+    const x = a[sortKey], y = b[sortKey];
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    if (typeof x === 'string') return x.localeCompare(y, 'lt') * sortDir;
+    return (x - y) * sortDir;
+  });
+  document.querySelector('#st-table tbody').innerHTML = rows.map(r => `<tr>
+    <td>${esc(r.name)}</td>
+    <td class="num">${num(r.airTemperature)}</td>
+    <td class="num">${num(r.feelsLikeTemperature)}</td>
+    <td class="num">${num(r.windSpeed)}</td>
+    <td class="num">${num(r.windGust)}</td>
+    <td>${compass(r.windDirection)}</td>
+    <td class="num">${num(r.relativeHumidity, 0)}</td>
+    <td class="num">${num(r.seaLevelPressure, 1)}</td>
+    <td class="num">${num(r.precipitation)}</td>
+    <td>${esc(cond(r.conditionCode))}</td>
+    <td>${fmtDateTime(r.time)}</td>
+  </tr>`).join('');
+  document.querySelectorAll('#st-table th').forEach(th =>
+    th.setAttribute('aria-sort', th.dataset.key === sortKey ? (sortDir > 0 ? 'ascending' : 'descending') : 'none'));
+}
+document.querySelectorAll('#st-table th button').forEach(btn => btn.addEventListener('click', () => {
+  const key = btn.parentElement.dataset.key;
+  if (key === sortKey) sortDir *= -1; else { sortKey = key; sortDir = key === 'name' ? 1 : -1; }
+  renderStationTable();
+}));
+
+/* ================= UPĖS ================= */
+let hydroStations = [], hydroLoaded = false;
+async function loadHydro() {
+  if (hydroLoaded) return; hydroLoaded = true;
+  try {
+    hydroStations = await api('/hydro-stations');
+    const groups = {};
+    hydroStations.forEach(s => (groups[s.waterBody || 'Kita'] ||= []).push(s));
+    const sel = document.getElementById('hydro-select');
+    sel.innerHTML = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'lt')).map(w =>
+      `<optgroup label="${esc(w)}">${groups[w].sort((a, b) => a.name.localeCompare(b.name, 'lt'))
+        .map(s => `<option value="${esc(s.code)}">${esc(s.name)}</option>`).join('')}</optgroup>`).join('');
+    let saved = null; try { saved = localStorage.getItem('meteo-hydro'); } catch (e) {}
+    const start = hydroStations.find(s => s.code === saved)
+      || hydroStations.find(s => /nemun/i.test(s.waterBody || '') && /kaun/i.test(s.name))
+      || hydroStations.find(s => /nemun/i.test(s.waterBody || '')) || hydroStations[0];
+    if (start) { sel.value = start.code; showHydro(start.code); }
+  } catch (e) {
+    console.error(e); hydroLoaded = false;
+    setStatus('hy-status', errorText(e), true);
+  }
+}
+function isoDay(offset) { const d = new Date(Date.now() - offset * 864e5); return d.toISOString().slice(0, 10); }
+async function showHydro(code) {
+  const days = Number(document.getElementById('hydro-days').value) || 7;
+  try { localStorage.setItem('meteo-hydro', code); } catch (e) {}
+  setStatus('hy-status', 'Įkeliami vandens matavimai…');
+  try {
+    const base = '/hydro-stations/' + encodeURIComponent(code) + '/observations/measured/';
+    const paths = [base + 'latest', ...Array.from({ length: days }, (_, i) => base + isoDay(i))];
+    const res = await pool(paths, 4, p => api(p));
+    const all = new Map();
+    res.forEach(r => (r?.observations || []).forEach(o => all.set(o.observationTimeUtc, o)));
+    const cutoff = Date.now() - days * 864e5;
+    const obs = [...all.values()].map(o => ({ ...o, t: parseUtc(o.observationTimeUtc) }))
+      .filter(o => o.t.getTime() >= cutoff).sort((a, b) => a.t - b.t);
+    if (!obs.length) {
+      const firstOk = res.find(Boolean);
+      throw firstOk ? Object.assign(new Error('empty'), { status: 404 }) : new Error('network');
+    }
+    const st = hydroStations.find(s => s.code === code) || res.find(Boolean)?.station || {};
+    const last = obs[obs.length - 1];
+    const levels = obs.filter(o => isNum(o.waterLevel));
+    const dayAgo = levels.find(o => o.t.getTime() >= last.t.getTime() - 864e5);
+    const change = isNum(last.waterLevel) && dayAgo ? last.waterLevel - dayAgo.waterLevel : null;
+    const lvMin = levels.length ? levels.reduce((a, b) => b.waterLevel < a.waterLevel ? b : a) : null;
+    const lvMax = levels.length ? levels.reduce((a, b) => b.waterLevel > a.waterLevel ? b : a) : null;
+    const card = (k, v, w) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span><span class="w">${w}</span></div>`;
+    const trend = change == null ? '' : change > 0.5 ? `<span class="trend-up">kyla +${num(change, 0)} cm per parą</span>`
+      : change < -0.5 ? `<span class="trend-down">krenta ${num(change, 0)} cm per parą</span>` : 'per parą beveik nepakito';
+    document.getElementById('hy-stats').innerHTML = [
+      card('Vandens lygis dabar', isNum(last.waterLevel) ? num(last.waterLevel, 0) + ' cm' : '—', trend || fmtDateTime(last.t)),
+      card('Vandens temperatūra', isNum(last.waterTemperature) ? num(last.waterTemperature, 1) + ' °C' : '—', fmtDateTime(last.t)),
+      lvMax ? card(`Aukščiausias per ${days} d.`, num(lvMax.waterLevel, 0) + ' cm', fmtDateTime(lvMax.t)) : '',
+      lvMin ? card(`Žemiausias per ${days} d.`, num(lvMin.waterLevel, 0) + ' cm', fmtDateTime(lvMin.t)) : '',
+    ].join('');
+    document.getElementById('hy-stats').hidden = false;
+    document.getElementById('hy-title').textContent = `${st.waterBody ? st.waterBody + ', ' : ''}${st.name || code}`;
+    document.getElementById('hy-range').textContent = `${fmtDateTime(obs[0].t)} – ${fmtDateTime(last.t)}`;
+    document.getElementById('hy-panel').hidden = false;
+    const hasTemp = obs.some(o => isNum(o.waterTemperature));
+    const build = () => ({
+      type: 'line',
+      data: {
+        labels: obs.map(o => dayNum(o.t) + ' ' + fmtTime(o.t)),
+        datasets: [
+          { label: 'Vandens lygis, cm', data: obs.map(o => o.waterLevel), yAxisID: 'y',
+            borderColor: css('--accent'), backgroundColor: css('--accent-soft'), fill: true, borderWidth: 2, pointRadius: 0, tension: .25 },
+          ...(hasTemp ? [{ label: 'Vandens temperatūra, °C', data: obs.map(o => o.waterTemperature), yAxisID: 'y2',
+            borderColor: css('--warm'), borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, tension: .25 }] : [])
+        ]
+      },
+      options: {
+        maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, spanGaps: true,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 7, maxRotation: 0 }, grid: { display: false } },
+          y: { position: 'left', title: { display: true, text: 'cm' } },
+          ...(hasTemp ? { y2: { position: 'right', title: { display: true, text: '°C' }, grid: { display: false } } } : {})
+        }
+      }
+    });
+    drawChart('hy-chart', build);
+    setStatus('hy-status', '');
+  } catch (e) {
+    console.error(e);
+    setStatus('hy-status', errorText(e), true);
+  }
+}
+document.getElementById('hydro-select').addEventListener('change', e => showHydro(e.target.value));
+document.getElementById('hydro-days').addEventListener('change', () => {
+  const v = document.getElementById('hydro-select').value; if (v) showHydro(v);
+});
+
+/* ================= SKIRTUKAI ================= */
+const TABS = { prognoze: null, stotys: loadStations, upes: loadHydro };
+function openTab(name) {
+  if (!(name in TABS)) name = 'prognoze';
+  for (const t of Object.keys(TABS)) {
+    document.getElementById('tab-' + t).setAttribute('aria-selected', t === name);
+    document.getElementById('view-' + t).hidden = t !== name;
+  }
+  if (TABS[name]) TABS[name]();
+  Object.values(charts).forEach(c => c.resize());
+}
+document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => {
+  const name = b.id.replace('tab-', ''); history.replaceState(null, '', '#' + name); openTab(name);
+}));
+window.addEventListener('hashchange', () => openTab(location.hash.slice(1)));
+
+/* ================= PRADŽIA ================= */
+(async function init() {
+  showApiMode();
+  openTab(location.hash.slice(1));
+  let start = qs.get('vieta');
+  if (!start) { try { start = localStorage.getItem('meteo-place'); } catch (e) {} }
+  showForecast(start || CONFIG.defaultPlace);
+  loadPlaces().catch(e => console.error(e));
+})();
+</script>
+</body>
+</html>
