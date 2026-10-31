@@ -22,6 +22,7 @@
   --rain: #2d6bd1;
   --good: #1f8a4c;
   --bad: #b8322a;
+  --warn: #b26b00;
   --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -31,7 +32,7 @@
   :root {
     --bg: #0c151b; --surface: #13212a; --ink: #e4edf1; --muted: #92a6b2; --line: #22343f;
     --accent: #3db4c3; --accent-soft: #163640; --warm: #f08a5d; --rain: #6b9df2;
-    --good: #4cc27f; --bad: #f07267; color-scheme: dark;
+    --good: #4cc27f; --bad: #f07267; --warn: #f0b04c; color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
@@ -114,6 +115,23 @@ tbody tr:hover { background: var(--accent-soft); }
 .pill { display: inline-block; font: 600 11px var(--font-data); padding: 2px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
 .trend-up { color: var(--rain); } .trend-down { color: var(--warm); }
 
+/* Gamtos jėgos */
+.crit { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+.crit .stat { border-left-width: 4px; }
+.crit .stat.hit { border-left-color: var(--bad); }
+.crit .stat.near { border-left-color: var(--warn); }
+.crit .stat.ok { border-left-color: var(--good); }
+.crit .rule { font-size: 12px; color: var(--muted); }
+td.hit { color: var(--bad); font-weight: 700; }
+td.near { color: var(--warn); font-weight: 600; }
+td small { display: block; font: 11px var(--font-data); color: var(--muted); font-weight: 400; }
+#jg-table tbody tr { cursor: pointer; }
+#jg-table tbody tr.sel { background: var(--accent-soft); }
+.flag { display: inline-block; font: 700 10px var(--font-data); letter-spacing: .04em; text-transform: uppercase; padding: 1px 6px; border-radius: 99px; background: var(--bad); color: var(--surface); margin-left: 4px; vertical-align: 1px; }
+.chart-box.sm { height: 210px; }
+.disclaimer { font-size: 13px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; }
+.disclaimer p { margin: 0; max-width: 90ch; }
+.row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 14px; }
 footer a { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -131,6 +149,7 @@ footer a { color: var(--accent); }
     <button role="tab" id="tab-prognoze" aria-controls="view-prognoze" aria-selected="true">Prognozė</button>
     <button role="tab" id="tab-stotys" aria-controls="view-stotys" aria-selected="false">Stotys dabar</button>
     <button role="tab" id="tab-upes" aria-controls="view-upes" aria-selected="false">Upės</button>
+    <button role="tab" id="tab-gamta" aria-controls="view-gamta" aria-selected="false">Gamtos jėgos</button>
   </nav>
 
   <!-- PROGNOZĖ -->
@@ -201,6 +220,78 @@ footer a { color: var(--accent); }
     <div class="panel" id="hy-panel" hidden>
       <header><h2 id="hy-title">Vandens lygis</h2><span class="note" id="hy-range"></span></header>
       <div class="chart-box"><canvas id="hy-chart" aria-label="Vandens lygio ir temperatūros grafikas"></canvas></div>
+    </div>
+  </section>
+
+  <!-- GAMTOS JĖGOS -->
+  <section class="view" id="view-gamta" role="tabpanel" aria-labelledby="tab-gamta" hidden>
+    <div class="disclaimer">
+      <p><strong>Gamtos jėgų kriterijai pagal ERGO Gyventojų turto draudimo taisykles</strong> (galioja nuo 2022-07-15, II dalies 4.4 p.):
+        audra – vėjas daugiau kaip <b>18 m/s</b>; liūtis – <b>15 mm</b> ir daugiau per <b>6 val.</b> ar trumpiau;
+        sniego slėgis – <b>20 cm</b> sniego per <b>12 val.</b> ar trumpiau; kruša – ledo gabaliukų krituliai.
+        Taisyklės nurodo remtis artimiausios meteorologijos stoties matavimais.</p>
+    </div>
+    <form class="controls" id="jg-form">
+      <div class="field" style="flex:0 1 170px">
+        <label for="jg-from">Nuo</label>
+        <input type="date" id="jg-from" min="2016-01-01">
+      </div>
+      <div class="field" style="flex:0 1 170px">
+        <label for="jg-to">Iki (imtinai)</label>
+        <input type="date" id="jg-to" min="2016-01-01">
+      </div>
+      <div class="field">
+        <label for="jg-place">Draudimo vieta (nebūtina)</label>
+        <input id="jg-place" list="place-list" placeholder="Pvz. Kaunas, Ukmergė" autocomplete="off">
+      </div>
+      <div class="field" style="flex:0 1 200px">
+        <label for="jg-mode">Stotys</label>
+        <select id="jg-mode">
+          <option value="near">5 artimiausios</option>
+          <option value="all">Visos stotys</option>
+        </select>
+      </div>
+      <button class="btn" type="submit">Vertinti</button>
+    </form>
+    <div id="jg-status" class="status">Pasirinkite laikotarpį ir spauskite „Vertinti“.</div>
+    <div id="jg-crit" class="crit" hidden></div>
+    <div class="panel" id="jg-panel" hidden>
+      <header>
+        <h2 id="jg-title">Rodikliai pagal stotis</h2>
+        <div class="row-actions">
+          <button class="btn ghost" type="button" id="jg-csv">Atsisiųsti CSV</button>
+        </div>
+      </header>
+      <span class="note">Raudona – kriterijus viršytas, oranžinė – pasiekta ne mažiau kaip 80 % ribos. Paspauskite eilutę, kad pamatytumėte valandinius grafikus.</span>
+      <div class="table-wrap">
+        <table id="jg-table">
+          <thead><tr>
+            <th data-key="name"><button type="button">Stotis</button></th>
+            <th class="num" data-key="dist"><button type="button">Atstumas</button></th>
+            <th class="num" data-key="gust"><button type="button">Gūsiai max, m/s</button></th>
+            <th class="num" data-key="wind"><button type="button">Vid. vėjas max, m/s</button></th>
+            <th class="num" data-key="rain6"><button type="button">Krituliai 6 h max, mm</button></th>
+            <th class="num" data-key="rainTotal"><button type="button">Krituliai iš viso, mm</button></th>
+            <th class="num" data-key="snow12"><button type="button">Sniego prieaugis 12 h, cm</button></th>
+            <th class="num" data-key="snowMax"><button type="button">Sniego danga max, cm</button></th>
+            <th class="num" data-key="tMin"><button type="button">Temp. min, °C</button></th>
+            <th class="num" data-key="tMax"><button type="button">Temp. max, °C</button></th>
+            <th data-key="hail"><button type="button">Kruša</button></th>
+            <th class="num" data-key="coverage"><button type="button">Duomenys</button></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel" id="jg-detail" hidden>
+      <header><h2 id="jg-dtitle">Stotis</h2><span class="note" id="jg-drange"></span></header>
+      <div class="chart-box sm"><canvas id="jg-c-wind" aria-label="Vėjo greitis ir gūsiai"></canvas></div>
+      <div class="chart-box sm"><canvas id="jg-c-rain" aria-label="Krituliai"></canvas></div>
+      <div class="chart-box sm"><canvas id="jg-c-snow" aria-label="Sniego danga ir temperatūra"></canvas></div>
+    </div>
+    <div class="disclaimer">
+      <p><b>Kaip skaičiuojama.</b> Gūsiai – didžiausias vėjo gūsis per valandą; taisyklėse nenurodyta, ar 18 m/s reiškia vidutinį vėjo greitį ar gūsį, todėl rodomi abu. Krituliai 6 h – didžiausia slenkanti 6 valandų valandinių kritulių suma. Sniego prieaugis 12 h – didžiausias sniego dangos storio padidėjimas per 12 valandų (sniegą matuoja ne visos stotys ir ne kas valandą). Kruša – kai stotis užfiksavo krušą kaip orų reiškinį; ji dažnai būna labai lokali ir stotyje gali būti neužfiksuota.</p>
+      <p>Tai orientacinis vertinimas, o ne draudiko sprendimas. Taisyklės leidžia įvykį nustatyti ir pagal panašius nuostolius kitiems geros būklės pastatams draudimo vietos zonoje.</p>
     </div>
   </section>
 
@@ -612,8 +703,301 @@ document.getElementById('hydro-days').addEventListener('change', () => {
   const v = document.getElementById('hydro-select').value; if (v) showHydro(v);
 });
 
+/* ================= GAMTOS JĖGOS (ERGO kriterijai) ================= */
+const CRIT = { gust: 18, rain6h: 15, snow12h: 20 };
+const H = 3600e3;
+let jgStations = null, jgRows = [], jgSortKey = 'dist', jgSortDir = 1, jgRun = 0, jgInit = false, jgMeta = {};
+let nextSlot = 0;
+// LHMT API leidžia ~180 užklausų per minutę, todėl naujas užklausas siunčiame ne dažniau kaip kas 400 ms.
+async function paced(path) {
+  if (!memo.has(path)) {
+    const now = Date.now(), slot = Math.max(now, nextSlot);
+    nextSlot = slot + 400;
+    if (slot > now) await new Promise(r => setTimeout(r, slot - now));
+  }
+  return api(path);
+}
+function tzOffset(ms) {
+  const d = new Date(ms);
+  return new Date(d.toLocaleString('en-US', { timeZone: CONFIG.tz })) - new Date(d.toLocaleString('en-US', { timeZone: 'UTC' }));
+}
+function localMidnightUtc(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const guess = Date.UTC(y, m - 1, d);
+  return guess - tzOffset(guess - tzOffset(guess));
+}
+const addDays = (ymd, n) => new Date(Date.UTC(...ymd.split('-').map((v, i) => i === 1 ? v - 1 : +v)) + n * 864e5).toISOString().slice(0, 10);
+const todayLocal = () => dayKey(new Date());
+function haversine(a, b) {
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.latitude - a.latitude), dLon = rad(b.longitude - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function analyse(obs, S, E) {
+  const inR = obs.filter(o => o.ms >= S && o.ms < E);
+  const r = { coverage: inR.length, expected: Math.round((Math.min(E, Date.now()) - S) / H) };
+  const maxBy = (key) => {
+    let best = null;
+    for (const o of inR) if (isNum(o[key]) && (!best || o[key] > best[key])) best = o;
+    return best;
+  };
+  const g = maxBy('windGust'), w = maxBy('windSpeed');
+  r.gust = g ? g.windGust : null; r.gustT = g?.ms;
+  r.wind = w ? w.windSpeed : null; r.windT = w?.ms;
+  const temps = inR.filter(o => isNum(o.airTemperature));
+  if (temps.length) {
+    const mn = temps.reduce((a, b) => b.airTemperature < a.airTemperature ? b : a);
+    const mx = temps.reduce((a, b) => b.airTemperature > a.airTemperature ? b : a);
+    r.tMin = mn.airTemperature; r.tMinT = mn.ms; r.tMax = mx.airTemperature; r.tMaxT = mx.ms;
+  } else { r.tMin = r.tMax = null; }
+  // Krituliai: slenkanti 6 val. suma (kiekvienas stebėjimas – praėjusios valandos krituliai)
+  const pr = obs.filter(o => isNum(o.precipitation));
+  r.rain6 = pr.length ? 0 : null; r.rainTotal = null;
+  let i0 = 0, sum = 0;
+  for (let j = 0; j < pr.length; j++) {
+    sum += pr[j].precipitation;
+    while (pr[i0].ms <= pr[j].ms - 6 * H) { sum -= pr[i0].precipitation; i0++; }
+    if (pr[j].ms >= S && pr[j].ms < E) {
+      r.rainTotal = (r.rainTotal || 0) + pr[j].precipitation;
+      if (sum > r.rain6) { r.rain6 = sum; r.rain6T = pr[j].ms; }
+    }
+    pr[j].rain6 = sum;
+  }
+  if (r.rain6 != null) r.rain6 = Math.round(r.rain6 * 10) / 10;
+  // Sniegas: didžiausias storio padidėjimas per 12 val.
+  const sn = obs.filter(o => isNum(o.snowDepth));
+  r.snowMax = null; r.snow12 = sn.length ? 0 : null;
+  for (let j = 0; j < sn.length; j++) {
+    if (sn[j].ms < S || sn[j].ms >= E) continue;
+    if (r.snowMax == null || sn[j].snowDepth > r.snowMax) r.snowMax = sn[j].snowDepth;
+    let mn = null;
+    for (let i = j - 1; i >= 0 && sn[i].ms >= sn[j].ms - 12 * H; i--) mn = mn == null ? sn[i].snowDepth : Math.min(mn, sn[i].snowDepth);
+    if (mn != null && sn[j].snowDepth - mn > r.snow12) { r.snow12 = sn[j].snowDepth - mn; r.snow12T = sn[j].ms; }
+  }
+  const hail = inR.filter(o => /hail/.test(o.conditionCode || ''));
+  r.hail = hail.length; r.hailT = hail[0]?.ms;
+  return r;
+}
+const stotyse = n => n + (n % 10 === 1 && n % 100 !== 11 ? ' stotyje' : ' stotyse');
+const level = (v, lim, strictGreater) => v == null ? '' : (strictGreater ? v > lim : v >= lim) ? 'hit' : v >= lim * .8 ? 'near' : '';
+
+async function runJegos() {
+  const run = ++jgRun;
+  const from = document.getElementById('jg-from').value, to = document.getElementById('jg-to').value;
+  if (!from || !to) return setStatus('jg-status', 'Nurodykite abi datas.', true);
+  if (to < from) return setStatus('jg-status', 'Data „Iki“ turi būti ne ankstesnė nei „Nuo“.', true);
+  if (from > todayLocal()) return setStatus('jg-status', 'Laikotarpis dar neprasidėjo. Pasirinkite praėjusias datas.', true);
+  const placeText = document.getElementById('jg-place').value.trim();
+  let mode = document.getElementById('jg-mode').value;
+  let place = null;
+  if (placeText) {
+    if (!places.length) { try { await loadPlaces(); } catch (e) {} }
+    place = findPlace(placeText);
+    if (!place) return setStatus('jg-status', 'Tokios vietovės nerasta. Pasirinkite iš siūlomo sąrašo arba palikite lauką tuščią.', true);
+    document.getElementById('jg-place').value = place.name;
+  } else if (mode === 'near') mode = 'all';
+
+  const S = localMidnightUtc(from), E = localMidnightUtc(addDays(to, 1));
+  const lastUtcDay = new Date(Math.min(E - 1, Date.now())).toISOString().slice(0, 10);
+  const days = [];
+  for (let d = new Date(S - 12 * H).toISOString().slice(0, 10); d <= lastUtcDay; d = addDays(d, 1)) days.push(d);
+
+  try {
+    setStatus('jg-status', 'Įkeliamas stočių sąrašas…');
+    if (!jgStations) jgStations = await api('/stations');
+    let list = jgStations.map(s => ({ ...s, dist: place && s.coordinates && place.coordinates ? haversine(place.coordinates, s.coordinates) : null }));
+    if (place) list.sort((a, b) => (a.dist ?? 1e9) - (b.dist ?? 1e9));
+    if (mode === 'near') list = list.slice(0, 5);
+    const total = list.length * days.length;
+    if (total > 420) {
+      return setStatus('jg-status', `Per daug duomenų vienam kartui (${list.length} stotys × ${days.length} d.). Visoms stotims rinkitės iki 7 dienų arba nurodykite draudimo vietą ir „5 artimiausios“.`, true);
+    }
+    const u = new URL(location.href);
+    u.searchParams.set('nuo', from); u.searchParams.set('iki', to);
+    if (place) u.searchParams.set('vieta', place.code);
+    history.replaceState(null, '', u);
+
+    const jobs = [];
+    list.forEach((s, si) => days.forEach(d => jobs.push({ si, path: '/stations/' + encodeURIComponent(s.code) + '/observations/' + d })));
+    const t0 = Date.now();
+    const res = await pool(jobs, 4, j => paced(j.path), (done, n) => {
+      if (run !== jgRun) return;
+      const left = Math.max(0, Math.round((n - done) * 0.4));
+      setStatus('jg-status', `Įkeliami stebėjimai: ${done} / ${n}` + (n - done > 20 ? ` (liko apie ${left} s)` : ''));
+    });
+    if (run !== jgRun) return;
+    const per = list.map(() => new Map());
+    let failed = 0;
+    res.forEach((r, k) => {
+      if (!r) { failed++; return; }
+      (r.observations || []).forEach(o => per[jobs[k].si].set(o.observationTimeUtc, o));
+    });
+    if (failed === res.length) throw new Error('network');
+    jgRows = list.map((s, si) => {
+      const obs = [...per[si].values()].map(o => ({ ...o, ms: parseUtc(o.observationTimeUtc).getTime() })).sort((a, b) => a.ms - b.ms);
+      return { name: s.name, code: s.code, dist: s.dist, obs, ...analyse(obs, S, E) };
+    });
+    jgMeta = { from, to, S, E, place };
+    if (place) { jgSortKey = 'dist'; jgSortDir = 1; }
+    renderJegosCrit(); renderJegosTable();
+    document.getElementById('jg-title').textContent = 'Rodikliai pagal stotis, ' + from + (to !== from ? ' – ' + to : '') + (place ? ' · ' + place.name : '');
+    document.getElementById('jg-panel').hidden = false;
+    setStatus('jg-status', failed ? `Dalies duomenų gauti nepavyko (${failed} iš ${res.length} užklausų). Rodikliai gali būti neišsamūs.` : '');
+    const first = [...jgRows].sort(rowSorter)[0];
+    if (first) showJegosDetail(first.code);
+  } catch (e) {
+    console.error(e);
+    if (run === jgRun) setStatus('jg-status', errorText(e), true);
+  }
+}
+function renderJegosCrit() {
+  const top = (key) => jgRows.filter(r => r[key] != null).sort((a, b) => b[key] - a[key])[0];
+  const card = (title, rule, lim, key, unit, strict) => {
+    const t = top(key);
+    const hits = jgRows.filter(r => level(r[key], lim, strict) === 'hit').length;
+    const cls = !t ? '' : hits ? 'hit' : level(t[key], lim, strict) === 'near' ? 'near' : 'ok';
+    const verdict = !t ? 'Nėra duomenų' : hits ? 'Viršyta ' + stotyse(hits) : 'Neviršyta';
+    return `<div class="stat ${cls}"><span class="k">${title}</span><span class="v">${verdict}</span>
+      <span class="w">${t ? `Daugiausia: ${num(t[key], 1)} ${unit}, ${esc(t.name)}` : ''}</span><span class="rule">${rule}</span></div>`;
+  };
+  const hailRows = jgRows.filter(r => r.hail > 0);
+  const windHits = jgRows.filter(r => level(r.wind, CRIT.gust, true) === 'hit').length;
+  document.getElementById('jg-crit').innerHTML = [
+    card('Audra (gūsiai)', `Riba: daugiau kaip 18 m/s · vid. vėjas viršijo ${stotyse(windHits)}`, CRIT.gust, 'gust', 'm/s', true),
+    card('Liūtis', 'Riba: 15 mm ir daugiau per 6 val.', CRIT.rain6h, 'rain6', 'mm', false),
+    card('Sniego slėgis', 'Riba: 20 cm ir daugiau per 12 val.', CRIT.snow12h, 'snow12', 'cm', false),
+    `<div class="stat ${hailRows.length ? 'hit' : 'ok'}"><span class="k">Kruša</span><span class="v">${hailRows.length ? 'Užfiksuota ' + stotyse(hailRows.length) : 'Neužfiksuota'}</span>
+      <span class="w">${hailRows.slice(0, 3).map(r => esc(r.name)).join(', ')}</span><span class="rule">Pagal stočių orų reiškinių kodus</span></div>`
+  ].join('');
+  document.getElementById('jg-crit').hidden = false;
+}
+function rowSorter(a, b) {
+  const k = jgSortKey, x = a[k], y = b[k];
+  if (x == null && y == null) return a.name.localeCompare(b.name, 'lt');
+  if (x == null) return 1; if (y == null) return -1;
+  if (typeof x === 'string') return x.localeCompare(y, 'lt') * jgSortDir;
+  return (x - y) * jgSortDir;
+}
+const tcell = (v, ms, cls, dp = 1) => `<td class="num ${cls || ''}">${num(v, dp)}${cls === 'hit' ? '<span class="flag">viršyta</span>' : ''}${ms ? `<small>${fmtDateTime(new Date(ms))}</small>` : ''}</td>`;
+function renderJegosTable() {
+  if (!jgMeta.place && jgSortKey === 'dist') { jgSortKey = 'gust'; jgSortDir = -1; }
+  const rows = [...jgRows].sort(rowSorter);
+  const sel = document.querySelector('#jg-table tbody tr.sel')?.dataset.code;
+  document.querySelector('#jg-table tbody').innerHTML = rows.map(r => `<tr data-code="${esc(r.code)}" class="${r.code === sel ? 'sel' : ''}" tabindex="0">
+    <td>${esc(r.name)}</td>
+    <td class="num">${r.dist != null ? num(r.dist, 0) + ' km' : '—'}</td>
+    ${tcell(r.gust, r.gustT, level(r.gust, CRIT.gust, true))}
+    ${tcell(r.wind, r.windT, level(r.wind, CRIT.gust, true))}
+    ${tcell(r.rain6, r.rain6 ? r.rain6T : null, level(r.rain6, CRIT.rain6h))}
+    <td class="num">${num(r.rainTotal, 1)}</td>
+    ${tcell(r.snow12, r.snow12 ? r.snow12T : null, level(r.snow12, CRIT.snow12h), 0)}
+    <td class="num">${num(r.snowMax, 0)}</td>
+    ${tcell(r.tMin, r.tMinT, '')}
+    ${tcell(r.tMax, r.tMaxT, '')}
+    <td class="${r.hail ? 'hit' : ''}">${r.hail ? 'Taip' + `<small>${fmtDateTime(new Date(r.hailT))}</small>` : '—'}</td>
+    <td class="num">${r.coverage}/${r.expected} h</td>
+  </tr>`).join('');
+  document.querySelectorAll('#jg-table th').forEach(th =>
+    th.setAttribute('aria-sort', th.dataset.key === jgSortKey ? (jgSortDir > 0 ? 'ascending' : 'descending') : 'none'));
+}
+document.querySelectorAll('#jg-table th button').forEach(btn => btn.addEventListener('click', () => {
+  const key = btn.parentElement.dataset.key;
+  if (key === jgSortKey) jgSortDir *= -1; else { jgSortKey = key; jgSortDir = (key === 'name' || key === 'dist') ? 1 : -1; }
+  renderJegosTable();
+}));
+document.querySelector('#jg-table tbody').addEventListener('click', e => {
+  const tr = e.target.closest('tr'); if (tr) showJegosDetail(tr.dataset.code);
+});
+document.querySelector('#jg-table tbody').addEventListener('keydown', e => {
+  const tr = e.target.closest('tr'); if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); showJegosDetail(tr.dataset.code); }
+});
+function showJegosDetail(code) {
+  const r = jgRows.find(x => x.code === code); if (!r) return;
+  document.querySelectorAll('#jg-table tbody tr').forEach(tr => tr.classList.toggle('sel', tr.dataset.code === code));
+  const { S, E } = jgMeta;
+  const obs = r.obs.filter(o => o.ms >= S && o.ms < E);
+  document.getElementById('jg-dtitle').textContent = r.name + (r.dist != null ? ` (${num(r.dist, 0)} km)` : '');
+  document.getElementById('jg-drange').textContent = obs.length ? `${fmtDateTime(new Date(obs[0].ms))} – ${fmtDateTime(new Date(obs[obs.length - 1].ms))}` : 'Šiuo laikotarpiu stebėjimų nėra';
+  document.getElementById('jg-detail').hidden = false;
+  const labels = obs.map(o => dayNum(new Date(o.ms)) + ' ' + fmtTime(new Date(o.ms)));
+  const limitLine = (val, label) => ({ type: 'line', label, data: obs.map(() => val), borderColor: css('--bad'), borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false });
+  const base = (yTitle, extraScales = {}) => ({
+    maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, spanGaps: true,
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
+    scales: { x: { ticks: { maxTicksLimit: 7, maxRotation: 0 }, grid: { display: false } }, y: { beginAtZero: true, title: { display: true, text: yTitle } }, ...extraScales }
+  });
+  drawChart('jg-c-wind', () => ({
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Gūsiai, m/s', data: obs.map(o => o.windGust), borderColor: css('--accent'), backgroundColor: css('--accent-soft'), fill: true, borderWidth: 2, pointRadius: 0, tension: .2 },
+      { label: 'Vid. vėjas, m/s', data: obs.map(o => o.windSpeed), borderColor: css('--muted'), borderWidth: 1.5, pointRadius: 0, tension: .2 },
+      limitLine(CRIT.gust, 'Audros riba 18 m/s')
+    ] },
+    options: base('m/s')
+  }));
+  drawChart('jg-c-rain', () => ({
+    type: 'bar',
+    data: { labels, datasets: [
+      { type: 'bar', label: 'Krituliai per val., mm', data: obs.map(o => o.precipitation), backgroundColor: css('--rain'), borderRadius: 2 },
+      { type: 'line', label: 'Suma per 6 val., mm', data: obs.map(o => o.rain6 ?? null), borderColor: css('--accent'), borderWidth: 2, pointRadius: 0, tension: .2 },
+      limitLine(CRIT.rain6h, 'Liūties riba 15 mm')
+    ] },
+    options: base('mm')
+  }));
+  const hasSnow = obs.some(o => isNum(o.snowDepth));
+  drawChart('jg-c-snow', () => ({
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Temperatūra, °C', data: obs.map(o => o.airTemperature), yAxisID: hasSnow ? 'y2' : 'y', borderColor: css('--warm'), borderWidth: 2, pointRadius: 0, tension: .3 },
+      ...(hasSnow ? [{ label: 'Sniego danga, cm', data: obs.map(o => o.snowDepth), yAxisID: 'y', borderColor: css('--ink'), backgroundColor: css('--accent-soft'), fill: true, borderWidth: 1.5, pointRadius: 2 }] : [])
+    ] },
+    options: (() => {
+      const o = base(hasSnow ? 'cm' : '°C', hasSnow ? { y2: { position: 'right', title: { display: true, text: '°C' }, grid: { display: false } } } : {});
+      if (!hasSnow) o.scales.y.beginAtZero = false;
+      return o;
+    })()
+  }));
+}
+document.getElementById('jg-form').addEventListener('submit', e => { e.preventDefault(); runJegos(); });
+document.getElementById('jg-csv').addEventListener('click', () => {
+  const n = v => v == null ? '' : String(Math.round(v * 10) / 10).replace('.', ',');
+  const t = ms => ms ? fmtDateTime(new Date(ms)) : '';
+  const head = ['Stotis', 'Atstumas km', 'Gūsiai max m/s', 'Gūsių laikas', 'Audra (>18 m/s)', 'Vid. vėjas max m/s', 'Krituliai 6 h max mm', '6 h lango pabaiga', 'Liūtis (≥15 mm/6 h)',
+    'Krituliai iš viso mm', 'Sniego prieaugis 12 h cm', 'Sniego danga max cm', 'Sniego slėgis (≥20 cm/12 h)', 'Temp. min °C', 'Temp. max °C', 'Kruša', 'Stebėjimų val.'];
+  const yes = b => b ? 'TAIP' : 'ne';
+  const lines = [...jgRows].sort(rowSorter).map(r => [r.name, r.dist != null ? n(r.dist) : '', n(r.gust), t(r.gustT), yes(r.gust > CRIT.gust), n(r.wind), n(r.rain6), t(r.rain6 ? r.rain6T : 0),
+    yes(r.rain6 >= CRIT.rain6h), n(r.rainTotal), n(r.snow12), n(r.snowMax), yes(r.snow12 >= CRIT.snow12h), n(r.tMin), n(r.tMax), r.hail ? 'TAIP ' + t(r.hailT) : 'ne', r.coverage + '/' + r.expected]);
+  const meta = [`Laikotarpis: ${jgMeta.from} – ${jgMeta.to}`, jgMeta.place ? `Draudimo vieta: ${jgMeta.place.name}` : '', 'Šaltinis: LHMT, api.meteo.lt'].filter(Boolean);
+  const csv = '﻿' + [...meta.map(m => [m]), [], head, ...lines].map(row => row.map(c => /[;"\n]/.test(c) ? '"' + String(c).replace(/"/g, '""') + '"' : c).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `gamtos-jegos_${jgMeta.from}_${jgMeta.to}${jgMeta.place ? '_' + jgMeta.place.code : ''}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+function loadJegos() {
+  if (jgInit) return; jgInit = true;
+  const to = qs.get('iki') || todayLocal(), from = qs.get('nuo') || todayLocal();
+  document.getElementById('jg-from').value = from;
+  document.getElementById('jg-to').value = to;
+  document.getElementById('jg-from').max = document.getElementById('jg-to').max = todayLocal();
+  const v = qs.get('vieta');
+  if (v) {
+    (places.length ? Promise.resolve() : loadPlaces().catch(() => {})).then(() => {
+      const p = places.find(x => x.code === v);
+      if (p) document.getElementById('jg-place').value = p.name;
+      runJegos();
+    });
+  } else {
+    document.getElementById('jg-mode').value = 'all';
+    runJegos();
+  }
+}
+
 /* ================= SKIRTUKAI ================= */
-const TABS = { prognoze: null, stotys: loadStations, upes: loadHydro };
+const TABS = { prognoze: null, stotys: loadStations, upes: loadHydro, gamta: loadJegos };
 function openTab(name) {
   if (!(name in TABS)) name = 'prognoze';
   for (const t of Object.keys(TABS)) {
