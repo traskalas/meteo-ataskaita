@@ -369,7 +369,7 @@ footer a { color: var(--accent); }
   <!-- PATIKRA -->
   <section class="view" id="view-patikra" role="tabpanel" aria-labelledby="tab-patikra" hidden>
     <div class="disclaimer">
-      <p><strong>Metų patikra draudimo vietai.</strong> Nurodykite draudimo vietą ir užklausos datą. Bus patikrinti artimiausios LHMT stoties 12 mėnesių iki tos datos stebėjimai ir parodytos dienos, kai viršyti ERGO taisyklių gamtos jėgų kriterijai: audra (daugiau kaip 18 m/s), liūtis (15 mm per 6 val.), sniego slėgis (20 cm per 12 val.), kruša.</p>
+      <p><strong>Patikra draudimo vietai.</strong> Nurodykite draudimo vietą, užklausos datą ir laikotarpį (1, 3, 6 arba 12 mėnesių). Bus patikrinti artimiausios LHMT stoties stebėjimai per pasirinktą laikotarpį iki tos datos ir parodytos dienos, kai viršyti ERGO taisyklių gamtos jėgų kriterijai: audra (daugiau kaip 18 m/s), liūtis (15 mm per 6 val.), sniego slėgis (20 cm per 12 val.), kruša.</p>
     </div>
     <form class="controls" id="pk-form">
       <div class="field">
@@ -379,6 +379,15 @@ footer a { color: var(--accent); }
       <div class="field" style="flex:0 1 170px">
         <label for="pk-date">Užklausos data</label>
         <input type="date" id="pk-date" min="2017-01-01">
+      </div>
+      <div class="field" style="flex:0 1 160px">
+        <label for="pk-period">Laikotarpis</label>
+        <select id="pk-period">
+          <option value="1">1 mėnuo</option>
+          <option value="3">3 mėnesiai</option>
+          <option value="6">6 mėnesiai</option>
+          <option value="12" selected>12 mėnesių</option>
+        </select>
       </div>
       <div class="field" style="flex:0 1 190px">
         <label for="pk-n">Stotys</label>
@@ -405,7 +414,7 @@ footer a { color: var(--accent); }
       </div>
       <button class="btn" type="submit" id="pk-go">Tikrinti</button>
     </form>
-    <div id="pk-status" class="status">Įrašykite draudimo vietą ir spauskite „Tikrinti“. Pirmą kartą metų duomenys įkeliami iki 3 minučių vienai stočiai, pakartotinai – greičiau.</div>
+    <div id="pk-status" class="status">Įrašykite draudimo vietą ir spauskite „Tikrinti“. Pirmą kartą 12 mėnesių duomenys įkeliami iki 3 minučių vienai stočiai, trumpesnio laikotarpio – greičiau, pakartotinai – dar greičiau.</div>
     <div class="progress" id="pk-progress" hidden><div></div></div>
     <div id="pk-sum" class="crit" hidden></div>
     <div class="panel" id="pk-cal-panel" hidden>
@@ -962,6 +971,14 @@ function localMidnightUtc(ymd) {
   return guess - tzOffset(guess - tzOffset(guess));
 }
 const addDays = (ymd, n) => new Date(Date.UTC(...ymd.split('-').map((v, i) => i === 1 ? v - 1 : +v)) + n * 864e5).toISOString().slice(0, 10);
+// Pridėti (atimti) mėnesius; jei tokios dienos mėnesyje nėra (pvz. 02-31), imama paskutinė mėnesio diena.
+function addMonths(ymd, n) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1 + n, 1));
+  const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  t.setUTCDate(Math.min(d, last));
+  return t.toISOString().slice(0, 10);
+}
 const todayLocal = () => dayKey(new Date());
 function haversine(a, b) {
   const R = 6371, rad = x => x * Math.PI / 180;
@@ -1249,8 +1266,9 @@ function loadJegos() {
   }
 }
 
-/* ================= GAMTOS JĖGOS – PATIKRA (12 mėn.) ================= */
+/* ================= GAMTOS JĖGOS – PATIKRA (1, 3, 6 arba 12 mėn.) ================= */
 const EV = { wind: 'Audra', rain: 'Liūtis', snow: 'Sniego slėgis', hail: 'Kruša' };
+const PERIODS = [1, 3, 6, 12];
 let pkRun = 0, pkInit = false, pkDays = [], pkMeta = null;
 function parseCoords(text) {
   const m = text.match(/^\s*(-?\d+(?:[.,]\d+)?)\s*[;,\s]\s*(-?\d+(?:[.,]\d+)?)\s*$/);
@@ -1274,10 +1292,12 @@ function setProgress(f) {
   const p = document.getElementById('pk-progress');
   p.hidden = f == null; if (f != null) p.firstElementChild.style.width = Math.round(f * 100) + '%';
 }
+const menLabel = m => m + (m === 1 ? ' mėn.' : ' mėn.');
 async function runPatikra() {
   const run = ++pkRun;
   const text = document.getElementById('pk-place').value.trim();
   const date = document.getElementById('pk-date').value || todayLocal();
+  const months = Number(document.getElementById('pk-period').value) || 12;
   const n = Number(document.getElementById('pk-n').value) || 1;
   const windMode = document.getElementById('pk-wind').value;
   if (!text) return setStatus('pk-status', 'Įrašykite draudimo vietą: vietovės pavadinimą arba koordinates.', true);
@@ -1290,7 +1310,8 @@ async function runPatikra() {
     document.getElementById('pk-place').value = place.name;
   }
   const to = date > todayLocal() ? todayLocal() : date;
-  const from = addDays(to, -364);
+  // Laikotarpis: nuo dienos po tos pačios datos prieš N mėnesių iki užklausos datos imtinai.
+  const from = addDays(addMonths(to, -months), 1);
   const S = localMidnightUtc(from), E = localMidnightUtc(addDays(to, 1));
   const lastUtcDay = new Date(Math.min(E - 1, Date.now())).toISOString().slice(0, 10);
   const utcDays = [];
@@ -1314,6 +1335,7 @@ async function runPatikra() {
     }
     const u = new URL(location.href);
     u.searchParams.set('data', to);
+    if (months === 12) u.searchParams.delete('men'); else u.searchParams.set('men', months);
     if (place) u.searchParams.set('vieta', place.code); else u.searchParams.set('koord', coords.latitude.toFixed(4) + ',' + coords.longitude.toFixed(4));
     if (!place) u.searchParams.delete('vieta'); else u.searchParams.delete('koord');
     history.replaceState(null, '', u);
@@ -1361,7 +1383,7 @@ async function runPatikra() {
         pkDays.push({ date: d, station: s.name, code: s.code, src: s.src, road: s.road, dist: s.dist, ...r, ...cls, hasData: r.coverage > 0 });
       }
     });
-    pkMeta = { from, to, place, coords, list, windMode, S, E };
+    pkMeta = { from, to, months, place, coords, list, windMode, S, E };
     renderPatikra();
     setProgress(null);
     const noData = list.filter(s => s.src !== 'road' && s.obsCount === 0).map(s => s.name);
@@ -1380,7 +1402,7 @@ async function runPatikra() {
   }
 }
 function renderPatikra() {
-  const { list, from, to, place, coords, windMode } = pkMeta;
+  const { list, from, to, months, place, coords, windMode } = pkMeta;
   // Santrauka: unikalios dienos pagal įvykį
   const byDate = new Map();
   for (const d of pkDays) {
@@ -1403,18 +1425,18 @@ function renderPatikra() {
   ].join('');
   document.getElementById('pk-sum').hidden = false;
 
-  document.getElementById('pk-cal-title').textContent = `Įvykių kalendorius, ${from} – ${to}`;
+  document.getElementById('pk-cal-title').textContent = `Įvykių kalendorius, ${from} – ${to} (${menLabel(months)})`;
   document.getElementById('pk-stations').textContent = (place ? place.name : `${num(coords.latitude, 4)}, ${num(coords.longitude, 4)}`) + ' · ' +
     list.map(s => `${s.name} (${s.src === 'road' ? 'kelių st., ' : ''}${num(s.dist, 0)} km${s.src === 'road' && s.firstMs ? ', duomenys nuo ' + dayKey(new Date(s.firstMs)) : ''})`).join(', ');
   // Kalendorius
-  const months = [];
+  const monthsList = [];
   for (let d = from.slice(0, 7) + '-01'; d <= to; d = addDays(d, 1)) {
     const key = d.slice(0, 7);
-    if (!months.length || months[months.length - 1].key !== key) months.push({ key, days: [] });
-    months[months.length - 1].days.push(d);
+    if (!monthsList.length || monthsList[monthsList.length - 1].key !== key) monthsList.push({ key, days: [] });
+    monthsList[monthsList.length - 1].days.push(d);
   }
   const MONTHS = ['Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis', 'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'];
-  document.getElementById('pk-cal').innerHTML = months.map(m => {
+  document.getElementById('pk-cal').innerHTML = monthsList.map(m => {
     const first = new Date(m.days[0] + 'T12:00:00Z').getUTCDay(); // 0 = sekmadienis
     const pad = (first + 6) % 7;
     const cells = Array.from({ length: pad }, () => '<span class="d pad"></span>').concat(m.days.map(d => {
@@ -1468,6 +1490,8 @@ function renderPatikraList() {
 }
 document.getElementById('pk-filters').addEventListener('change', renderPatikraList);
 document.getElementById('pk-form').addEventListener('submit', e => { e.preventDefault(); runPatikra(); });
+// Pakeitus laikotarpį po patikros, ji atliekama iš naujo (jau įkelti duomenys imami iš atminties).
+document.getElementById('pk-period').addEventListener('change', () => { if (pkMeta) runPatikra(); });
 document.getElementById('pk-wind').addEventListener('change', () => {
   if (!pkMeta) return;
   pkMeta.windMode = document.getElementById('pk-wind').value;
@@ -1491,11 +1515,11 @@ document.getElementById('pk-csv').addEventListener('click', () => {
     'Krituliai per parą mm', 'Sniego prieaugis 12 h cm', 'Sniego danga max cm', 'Kruša', 'Temp. min °C', 'Temp. max °C', 'Stebėjimų val.'];
   const rows = visiblePkRows().map(d => [d.date, d.station, srcLabel(d), n1(d.dist), d.ev.map(k => EV[k]).join(', '), d.near.map(k => EV[k]).join(', '), n1(d.gust), t(d.gustT), n1(d.wind),
     n1(d.rain6), t(d.rain6 ? d.rain6T : 0), n1(d.rainTotal), n1(d.snow12), n1(d.snowMax), d.hail ? 'TAIP ' + t(d.hailT) : '', n1(d.tMin), n1(d.tMax), String(d.coverage)]);
-  const { place, coords, from, to, list, windMode } = pkMeta;
+  const { place, coords, from, to, months, list, windMode } = pkMeta;
   const meta = [
     'Gamtos jėgų patikra pagal ERGO Gyventojų turto draudimo taisyklių (nuo 2022-07-15) II d. 4.4 p. kriterijus',
     'Draudimo vieta: ' + (place ? place.name : coords.latitude.toFixed(4) + ', ' + coords.longitude.toFixed(4)),
-    `Laikotarpis: ${from} – ${to}`,
+    `Laikotarpis: ${from} – ${to} (${menLabel(months)})`,
     'Stotys: ' + list.map(s => `${s.name} (${n1(s.dist)} km)`).join(', '),
     'Audra vertinta pagal: ' + (windMode === 'mean' ? 'vidutinį vėją' : 'vėjo gūsius'),
     'Šaltiniai: LHMT (api.meteo.lt); Via Lietuva kelių oro sąlygų stotys (eismoinfo.lt) – papildomi duomenys, kritulių kiekis apskaičiuotas iš intensyvumo'
@@ -1512,6 +1536,8 @@ function loadPatikra() {
   const dateInput = document.getElementById('pk-date');
   dateInput.max = todayLocal();
   dateInput.value = qs.get('data') || todayLocal();
+  const men = Number(qs.get('men'));
+  if (PERIODS.includes(men)) document.getElementById('pk-period').value = String(men);
   const v = qs.get('vieta'), k = qs.get('koord');
   if (k) { document.getElementById('pk-place').value = k; runPatikra(); }
   else if (v) {
