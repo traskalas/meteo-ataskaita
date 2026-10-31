@@ -23,6 +23,11 @@
   --good: #1f8a4c;
   --bad: #b8322a;
   --warn: #b26b00;
+  --ev-wind: #0a7584;
+  --ev-rain: #2d6bd1;
+  --ev-snow: #7a4fc4;
+  --ev-hail: #c9512a;
+  --ev-near: #e3c48a;
   --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -32,7 +37,8 @@
   :root {
     --bg: #0c151b; --surface: #13212a; --ink: #e4edf1; --muted: #92a6b2; --line: #22343f;
     --accent: #3db4c3; --accent-soft: #163640; --warm: #f08a5d; --rain: #6b9df2;
-    --good: #4cc27f; --bad: #f07267; --warn: #f0b04c; color-scheme: dark;
+    --good: #4cc27f; --bad: #f07267; --warn: #f0b04c;
+    --ev-wind: #2fa9b8; --ev-rain: #4f86e8; --ev-snow: #9a76e0; --ev-hail: #e0784a; --ev-near: #6b5a35; color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
@@ -132,6 +138,41 @@ td small { display: block; font: 11px var(--font-data); color: var(--muted); fon
 .disclaimer { font-size: 13px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; }
 .disclaimer p { margin: 0; max-width: 90ch; }
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Patikra */
+.progress { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.progress > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.cal { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 14px 12px; }
+.cal .m { display: grid; gap: 4px; min-width: 0; }
+.cal .m b { font: 600 11px var(--font-data); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.cal .g { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal .d { aspect-ratio: 1; max-width: 100%; border-radius: 2px; background: var(--line); border: 0; padding: 0; }
+.cal .d.na { background: transparent; outline: 1px dashed var(--line); outline-offset: -1px; }
+.cal .d.pad { background: transparent; }
+.cal .d[data-date] { cursor: pointer; }
+.cal .d:focus-visible { outline: 2px solid var(--ink); }
+.ev-wind { background: var(--ev-wind) !important; } .ev-rain { background: var(--ev-rain) !important; }
+.ev-snow { background: var(--ev-snow) !important; } .ev-hail { background: var(--ev-hail) !important; }
+.ev-multi { background: var(--bad) !important; } .ev-near { background: var(--ev-near) !important; }
+.tag { display: inline-block; font: 600 11px var(--font-data); padding: 2px 7px; border-radius: 99px; color: #fff; margin: 1px 4px 1px 0; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
+.filters label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.filters input { width: auto; }
+#pk-table td { white-space: normal; min-width: 90px; }
+#pk-table td:first-child { white-space: nowrap; }
+#pk-table tr.flash { background: var(--accent-soft); }
+#pk-table a { color: var(--accent); }
+@media (max-width: 640px) {
+  #pk-table thead { display: none; }
+  #pk-table, #pk-table tbody { display: block; }
+  #pk-table tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  #pk-table td { border: 0; padding: 0; min-width: 0; text-align: left; }
+  #pk-table td:nth-child(3), #pk-table td:nth-child(4) { grid-column: 1 / -1; }
+  #pk-table td:nth-child(5) { grid-column: 1; color: var(--muted); }
+  #pk-table td:nth-child(5)::before { content: "Temp. min / max: "; font-family: var(--font-body); }
+  #pk-table td:nth-child(6) { grid-column: 2; grid-row: 4; text-align: right; }
+}
 footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 14px; }
 footer a { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -150,6 +191,7 @@ footer a { color: var(--accent); }
     <button role="tab" id="tab-stotys" aria-controls="view-stotys" aria-selected="false">Stotys dabar</button>
     <button role="tab" id="tab-upes" aria-controls="view-upes" aria-selected="false">Upės</button>
     <button role="tab" id="tab-gamta" aria-controls="view-gamta" aria-selected="false">Gamtos jėgos</button>
+    <button role="tab" id="tab-patikra" aria-controls="view-patikra" aria-selected="false">Gamtos jėgos – patikra</button>
   </nav>
 
   <!-- PROGNOZĖ -->
@@ -295,6 +337,71 @@ footer a { color: var(--accent); }
     </div>
   </section>
 
+  <!-- PATIKRA -->
+  <section class="view" id="view-patikra" role="tabpanel" aria-labelledby="tab-patikra" hidden>
+    <div class="disclaimer">
+      <p><strong>Metų patikra draudimo vietai.</strong> Nurodykite draudimo vietą ir užklausos datą. Bus patikrinti artimiausios LHMT stoties 12 mėnesių iki tos datos stebėjimai ir parodytos dienos, kai viršyti ERGO taisyklių gamtos jėgų kriterijai: audra (daugiau kaip 18 m/s), liūtis (15 mm per 6 val.), sniego slėgis (20 cm per 12 val.), kruša.</p>
+    </div>
+    <form class="controls" id="pk-form">
+      <div class="field">
+        <label for="pk-place">Draudimo vieta</label>
+        <input id="pk-place" list="place-list" placeholder="Vietovė arba koordinatės, pvz. 54.90, 23.89" autocomplete="off" required>
+      </div>
+      <div class="field" style="flex:0 1 170px">
+        <label for="pk-date">Užklausos data</label>
+        <input type="date" id="pk-date" min="2017-01-01">
+      </div>
+      <div class="field" style="flex:0 1 190px">
+        <label for="pk-n">Stotys</label>
+        <select id="pk-n">
+          <option value="1">Artimiausia</option>
+          <option value="2">2 artimiausios</option>
+          <option value="3">3 artimiausios</option>
+        </select>
+      </div>
+      <div class="field" style="flex:0 1 200px">
+        <label for="pk-wind">Audrą vertinti pagal</label>
+        <select id="pk-wind">
+          <option value="gust">Vėjo gūsius</option>
+          <option value="mean">Vidutinį vėją</option>
+        </select>
+      </div>
+      <button class="btn" type="submit" id="pk-go">Tikrinti</button>
+    </form>
+    <div id="pk-status" class="status">Įrašykite draudimo vietą ir spauskite „Tikrinti“. Pirmą kartą metų duomenys įkeliami iki 3 minučių vienai stočiai, pakartotinai – greičiau.</div>
+    <div class="progress" id="pk-progress" hidden><div></div></div>
+    <div id="pk-sum" class="crit" hidden></div>
+    <div class="panel" id="pk-cal-panel" hidden>
+      <header><h2 id="pk-cal-title">Įvykių kalendorius</h2><span class="note" id="pk-stations"></span></header>
+      <div class="legend">
+        <span><i class="ev-wind"></i>Audra</span><span><i class="ev-rain"></i>Liūtis</span><span><i class="ev-snow"></i>Sniego slėgis</span>
+        <span><i class="ev-hail"></i>Kruša</span><span><i class="ev-multi"></i>Keli įvykiai</span><span><i class="ev-near"></i>Arti ribos (≥80 %)</span>
+        <span><i style="outline:1px dashed var(--line);outline-offset:-1px"></i>Nėra duomenų</span>
+      </div>
+      <div class="cal" id="pk-cal"></div>
+    </div>
+    <div class="panel" id="pk-list-panel" hidden>
+      <header>
+        <h2>Dienos, kai viršyti kriterijai</h2>
+        <div class="row-actions"><button class="btn ghost" type="button" id="pk-csv">Atsisiųsti CSV</button></div>
+      </header>
+      <div class="filters" id="pk-filters">
+        <label><input type="checkbox" value="wind" checked>Audra</label>
+        <label><input type="checkbox" value="rain" checked>Liūtis</label>
+        <label><input type="checkbox" value="snow" checked>Sniego slėgis</label>
+        <label><input type="checkbox" value="hail" checked>Kruša</label>
+        <label><input type="checkbox" id="pk-near">Rodyti ir arti ribos</label>
+      </div>
+      <div class="table-wrap">
+        <table id="pk-table">
+          <thead><tr><th>Data</th><th>Stotis</th><th>Įvykis</th><th>Rodikliai</th><th class="num">Temp. min / max, °C</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <span class="note" id="pk-empty"></span>
+    </div>
+  </section>
+
   <footer>
     Duomenų šaltinis: <a href="https://www.meteo.lt" target="_blank" rel="noopener">Lietuvos hidrometeorologijos tarnyba prie Aplinkos ministerijos (LHMT)</a>, <a href="https://api.meteo.lt" target="_blank" rel="noopener">api.meteo.lt</a>.
     Laikas rodomas Lietuvos laiku. <span id="api-mode"></span>
@@ -336,8 +443,11 @@ const cond = c => (c && CONDITIONS[c]) || (c ? c.replace(/-/g, ' ') : '—');
 
 /* ---------- Užklausos ---------- */
 const memo = new Map();
+// Užklausų, kurios pasiekė LHMT serverį (ne tarpinio serverio talpyklą), laikai – užklausų limitui sekti.
+const missLog = [];
 async function getJSON(url) {
   const r = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!(r.headers && r.headers.get && r.headers.get('X-Cache') === 'HIT')) missLog.push(Date.now());
   if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
   return r.json();
 }
@@ -707,15 +817,23 @@ document.getElementById('hydro-days').addEventListener('change', () => {
 const CRIT = { gust: 18, rain6h: 15, snow12h: 20 };
 const H = 3600e3;
 let jgStations = null, jgRows = [], jgSortKey = 'dist', jgSortDir = 1, jgRun = 0, jgInit = false, jgMeta = {};
-let nextSlot = 0;
-// LHMT API leidžia ~180 užklausų per minutę, todėl naujas užklausas siunčiame ne dažniau kaip kas 400 ms.
-async function paced(path) {
-  if (!memo.has(path)) {
-    const now = Date.now(), slot = Math.max(now, nextSlot);
-    nextSlot = slot + 400;
-    if (slot > now) await new Promise(r => setTimeout(r, slot - now));
+// LHMT API leidžia ~180 užklausų per minutę. Skaičiuojame tik užklausas, kurios pasiekė LHMT
+// (atsakymai iš tarpinio serverio talpyklos limito nenaudoja), ir laikomės 150 per minutę.
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let inflight = 0;
+async function paced(path, tries = 3) {
+  if (memo.has(path)) return api(path);
+  for (;;) {
+    const now = Date.now();
+    while (missLog.length && missLog[0] < now - 60e3) missLog.shift();
+    if (missLog.length + inflight < 150) break;
+    await sleep(500);
   }
-  return api(path);
+  inflight++;
+  let err;
+  try { return await api(path); } catch (e) { err = e; } finally { inflight--; }
+  if (err.status === 429 && tries > 1) { await sleep(30e3); return paced(path, tries - 1); }
+  throw err;
 }
 function tzOffset(ms) {
   const d = new Date(ms);
@@ -996,8 +1114,256 @@ function loadJegos() {
   }
 }
 
+/* ================= GAMTOS JĖGOS – PATIKRA (12 mėn.) ================= */
+const EV = { wind: 'Audra', rain: 'Liūtis', snow: 'Sniego slėgis', hail: 'Kruša' };
+let pkRun = 0, pkInit = false, pkDays = [], pkMeta = null;
+function parseCoords(text) {
+  const m = text.match(/^\s*(-?\d+(?:[.,]\d+)?)\s*[;,\s]\s*(-?\d+(?:[.,]\d+)?)\s*$/);
+  if (!m) return null;
+  const a = parseFloat(m[1].replace(',', '.')), b = parseFloat(m[2].replace(',', '.'));
+  const [lat, lon] = a > b ? [a, b] : [b, a]; // Lietuvoje platuma (53–57) visada didesnė už ilgumą (20–27)
+  if (lat < 53 || lat > 57 || lon < 20 || lon > 27.5) return null;
+  return { latitude: lat, longitude: lon };
+}
+function classifyDay(r, windMode) {
+  const windVal = windMode === 'mean' ? r.wind : r.gust;
+  const ev = [], near = [];
+  const chk = (key, val, lim, strict) => { const l = level(val, lim, strict); if (l === 'hit') ev.push(key); else if (l === 'near') near.push(key); };
+  chk('wind', windVal, CRIT.gust, true);
+  chk('rain', r.rain6, CRIT.rain6h, false);
+  chk('snow', r.snow12, CRIT.snow12h, false);
+  if (r.hail) ev.push('hail');
+  return { ev, near };
+}
+function setProgress(f) {
+  const p = document.getElementById('pk-progress');
+  p.hidden = f == null; if (f != null) p.firstElementChild.style.width = Math.round(f * 100) + '%';
+}
+async function runPatikra() {
+  const run = ++pkRun;
+  const text = document.getElementById('pk-place').value.trim();
+  const date = document.getElementById('pk-date').value || todayLocal();
+  const n = Number(document.getElementById('pk-n').value) || 1;
+  const windMode = document.getElementById('pk-wind').value;
+  if (!text) return setStatus('pk-status', 'Įrašykite draudimo vietą: vietovės pavadinimą arba koordinates.', true);
+  let place = null, coords = parseCoords(text);
+  if (!coords) {
+    if (!places.length) { try { await loadPlaces(); } catch (e) {} }
+    place = findPlace(text);
+    if (!place || !place.coordinates) return setStatus('pk-status', 'Tokios vietovės nerasta. Pasirinkite iš siūlomo sąrašo arba įrašykite koordinates, pvz. 54.90, 23.89.', true);
+    coords = place.coordinates;
+    document.getElementById('pk-place').value = place.name;
+  }
+  const to = date > todayLocal() ? todayLocal() : date;
+  const from = addDays(to, -364);
+  const S = localMidnightUtc(from), E = localMidnightUtc(addDays(to, 1));
+  const lastUtcDay = new Date(Math.min(E - 1, Date.now())).toISOString().slice(0, 10);
+  const utcDays = [];
+  for (let d = new Date(S - 12 * H).toISOString().slice(0, 10); d <= lastUtcDay; d = addDays(d, 1)) utcDays.push(d);
+
+  try {
+    setStatus('pk-status', 'Ieškoma artimiausių stočių…'); setProgress(0);
+    if (!jgStations) jgStations = await api('/stations');
+    const list = jgStations.filter(s => s.coordinates)
+      .map(s => ({ ...s, dist: haversine(coords, s.coordinates) }))
+      .sort((a, b) => a.dist - b.dist).slice(0, n);
+    if (!list.length) throw Object.assign(new Error('no stations'), { status: 404 });
+    const u = new URL(location.href);
+    u.searchParams.set('data', to);
+    if (place) u.searchParams.set('vieta', place.code); else u.searchParams.set('koord', coords.latitude.toFixed(4) + ',' + coords.longitude.toFixed(4));
+    if (!place) u.searchParams.delete('vieta'); else u.searchParams.delete('koord');
+    history.replaceState(null, '', u);
+
+    const jobs = [];
+    list.forEach((s, si) => utcDays.forEach(d => jobs.push({ si, path: '/stations/' + encodeURIComponent(s.code) + '/observations/' + d })));
+    const t0 = Date.now();
+    const res = await pool(jobs, 6, j => paced(j.path), (done, total) => {
+      if (run !== pkRun) return;
+      setProgress(done / total);
+      const el = (Date.now() - t0) / 1000, eta = done > 10 ? Math.round(el / done * (total - done)) : null;
+      setStatus('pk-status', `Įkeliami ${list.map(s => s.name).join(', ')} stebėjimai: ${done} / ${total} dienų` +
+        (eta != null && total - done > 5 ? ` · liko apie ${eta >= 90 ? Math.round(eta / 60) + ' min.' : eta + ' s'}` : ''));
+    });
+    if (run !== pkRun) return;
+    let failed = 0;
+    const per = list.map(() => new Map());
+    res.forEach((r, k) => { if (!r) { failed++; return; } (r.observations || []).forEach(o => per[jobs[k].si].set(o.observationTimeUtc, o)); });
+    if (failed === res.length) throw new Error('network');
+
+    // Analizė kiekvienai vietinei parai
+    pkDays = [];
+    list.forEach((s, si) => {
+      const obs = [...per[si].values()].map(o => ({ ...o, ms: parseUtc(o.observationTimeUtc).getTime() })).sort((a, b) => a.ms - b.ms);
+      s.obsCount = obs.filter(o => o.ms >= S && o.ms < E).length;
+      let p = 0;
+      for (let d = from; d <= to; d = addDays(d, 1)) {
+        const dS = localMidnightUtc(d), dE = localMidnightUtc(addDays(d, 1));
+        while (p < obs.length && obs[p].ms < dS - 12 * H) p++;
+        let q = p; while (q < obs.length && obs[q].ms < dE) q++;
+        const slice = obs.slice(p, q);
+        const r = analyse(slice, dS, dE);
+        const cls = classifyDay(r, windMode);
+        pkDays.push({ date: d, station: s.name, code: s.code, dist: s.dist, ...r, ...cls, hasData: r.coverage > 0 });
+      }
+    });
+    pkMeta = { from, to, place, coords, list, windMode, S, E };
+    renderPatikra();
+    setProgress(null);
+    const noData = list.map(s => s.obsCount === 0 ? s.name : null).filter(Boolean);
+    setStatus('pk-status', [
+      failed ? `Dalies dienų duomenų gauti nepavyko (${failed} iš ${res.length}).` : '',
+      noData.length ? `Stotis ${noData.join(', ')} šiuo laikotarpiu duomenų neteikė – rinkitės daugiau stočių.` : ''
+    ].filter(Boolean).join(' '));
+  } catch (e) {
+    console.error(e); setProgress(null);
+    if (run === pkRun) setStatus('pk-status', errorText(e), true);
+  }
+}
+function renderPatikra() {
+  const { list, from, to, place, coords, windMode } = pkMeta;
+  // Santrauka: unikalios dienos pagal įvykį
+  const byDate = new Map();
+  for (const d of pkDays) {
+    const e = byDate.get(d.date) || { ev: new Set(), near: new Set(), hasData: false };
+    d.ev.forEach(x => e.ev.add(x)); d.near.forEach(x => e.near.add(x)); e.hasData ||= d.hasData;
+    byDate.set(d.date, e);
+  }
+  const count = k => [...byDate.values()].filter(e => e.ev.has(k)).length;
+  const maxOf = key => pkDays.filter(d => d[key] != null).sort((a, b) => b[key] - a[key])[0];
+  const windKey = windMode === 'mean' ? 'wind' : 'gust';
+  const mw = maxOf(windKey), mr = maxOf('rain6'), ms = maxOf('snow12');
+  const dienos = k => { const c = count(k); return c + (c % 10 === 1 && c % 100 !== 11 ? ' diena' : (c % 10 >= 2 && c % 10 <= 9 && !(c % 100 >= 11 && c % 100 <= 19)) ? ' dienos' : ' dienų'); };
+  const card = (k, rule, max, unit) => `<div class="stat ${count(k) ? 'hit' : 'ok'}"><span class="k">${EV[k]}</span><span class="v">${dienos(k)}</span>
+    <span class="w">${max === undefined ? '' : 'Didžiausia: ' + (max ? num(max[k === 'wind' ? windKey : k === 'rain' ? 'rain6' : 'snow12'], 1) + ' ' + unit + ', ' + max.date : '—')}</span><span class="rule">${rule}</span></div>`;
+  document.getElementById('pk-sum').innerHTML = [
+    card('wind', windMode === 'mean' ? 'Vidutinis vėjas daugiau kaip 18 m/s' : 'Vėjo gūsiai daugiau kaip 18 m/s', mw, 'm/s'),
+    card('rain', '15 mm ir daugiau per 6 val.', mr, 'mm'),
+    card('snow', '20 cm ir daugiau per 12 val.', ms, 'cm'),
+    card('hail', 'Stotyje užfiksuota kruša', undefined, ''),
+  ].join('');
+  document.getElementById('pk-sum').hidden = false;
+
+  document.getElementById('pk-cal-title').textContent = `Įvykių kalendorius, ${from} – ${to}`;
+  document.getElementById('pk-stations').textContent = (place ? place.name : `${num(coords.latitude, 4)}, ${num(coords.longitude, 4)}`) + ' · ' +
+    list.map(s => `${s.name} (${num(s.dist, 0)} km)`).join(', ');
+  // Kalendorius
+  const months = [];
+  for (let d = from.slice(0, 7) + '-01'; d <= to; d = addDays(d, 1)) {
+    const key = d.slice(0, 7);
+    if (!months.length || months[months.length - 1].key !== key) months.push({ key, days: [] });
+    months[months.length - 1].days.push(d);
+  }
+  const MONTHS = ['Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis', 'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'];
+  document.getElementById('pk-cal').innerHTML = months.map(m => {
+    const first = new Date(m.days[0] + 'T12:00:00Z').getUTCDay(); // 0 = sekmadienis
+    const pad = (first + 6) % 7;
+    const cells = Array.from({ length: pad }, () => '<span class="d pad"></span>').concat(m.days.map(d => {
+      const e = byDate.get(d);
+      if (!e) return '<span class="d pad"></span>';
+      let cls = !e.hasData ? 'na' : e.ev.size > 1 ? 'ev-multi' : e.ev.size ? 'ev-' + [...e.ev][0] : e.near.size ? 'ev-near' : '';
+      const title = d + (!e.hasData ? ': nėra duomenų' : e.ev.size ? ': ' + [...e.ev].map(k => EV[k]).join(', ') : e.near.size ? ': arti ribos (' + [...e.near].map(k => EV[k]).join(', ') + ')' : '');
+      const clickable = e.ev.size || e.near.size;
+      return clickable ? `<button type="button" class="d ${cls}" data-date="${d}" title="${esc(title)}" aria-label="${esc(title)}"></button>` : `<span class="d ${cls}" title="${esc(title)}"></span>`;
+    }));
+    const [y, mo] = m.key.split('-').map(Number);
+    return `<div class="m"><b>${MONTHS[mo - 1]} ${y}</b><div class="g">${cells.join('')}</div></div>`;
+  }).join('');
+  document.getElementById('pk-cal-panel').hidden = false;
+  renderPatikraList();
+  document.getElementById('pk-list-panel').hidden = false;
+}
+function dayMetrics(d) {
+  const parts = [];
+  const g = (v, t, unit, dp = 1) => v == null ? null : `${num(v, dp)} ${unit}${t ? ' (' + fmtTime(new Date(t)) + ')' : ''}`;
+  if (d.ev.includes('wind') || d.near.includes('wind')) parts.push('Gūsiai ' + g(d.gust, d.gustT, 'm/s') + ', vid. vėjas ' + g(d.wind, d.windT, 'm/s'));
+  if (d.ev.includes('rain') || d.near.includes('rain')) parts.push('Krituliai per 6 val. ' + g(d.rain6, d.rain6T, 'mm') + ', per parą ' + num(d.rainTotal, 1) + ' mm');
+  if (d.ev.includes('snow') || d.near.includes('snow')) parts.push('Sniego prieaugis per 12 val. ' + g(d.snow12, d.snow12T, 'cm', 0) + ', danga ' + num(d.snowMax, 0) + ' cm');
+  if (d.ev.includes('hail')) parts.push('Kruša ' + fmtTime(new Date(d.hailT)));
+  return parts;
+}
+function visiblePkRows() {
+  const types = [...document.querySelectorAll('#pk-filters input[value]:checked')].map(i => i.value);
+  const near = document.getElementById('pk-near').checked;
+  return pkDays.filter(d => d.ev.some(k => types.includes(k)) || (near && d.near.some(k => types.includes(k))))
+    .sort((a, b) => b.date.localeCompare(a.date) || a.dist - b.dist);
+}
+function renderPatikraList() {
+  const rows = visiblePkRows();
+  const tag = (k, isNear) => `<span class="tag ev-${isNear ? 'near' : k}" style="${isNear ? 'color:var(--ink)' : ''}">${EV[k]}${isNear ? ' – arti' : ''}</span>`;
+  document.querySelector('#pk-table tbody').innerHTML = rows.map(d => {
+    const link = new URL(location.href);
+    link.search = ''; link.searchParams.set('nuo', d.date); link.searchParams.set('iki', d.date);
+    if (pkMeta.place) link.searchParams.set('vieta', pkMeta.place.code);
+    link.hash = 'gamta';
+    return `<tr data-date="${d.date}">
+      <td>${d.date}<small>${esc(dayName(new Date(d.date + 'T12:00:00Z')))}</small></td>
+      <td>${esc(d.station)}<small>${num(d.dist, 0)} km</small></td>
+      <td>${d.ev.map(k => tag(k)).join('')}${d.near.map(k => tag(k, true)).join('')}</td>
+      <td>${dayMetrics(d).map(esc).join('<br>')}</td>
+      <td class="num">${num(d.tMin, 1)} / ${num(d.tMax, 1)}</td>
+      <td><a href="${esc(link.toString())}">Valandiniai duomenys</a></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('pk-empty').textContent = rows.length ? '' : 'Per šį laikotarpį pasirinktų kriterijų viršijimų nerasta.';
+}
+document.getElementById('pk-filters').addEventListener('change', renderPatikraList);
+document.getElementById('pk-form').addEventListener('submit', e => { e.preventDefault(); runPatikra(); });
+document.getElementById('pk-wind').addEventListener('change', () => {
+  if (!pkMeta) return;
+  pkMeta.windMode = document.getElementById('pk-wind').value;
+  pkDays.forEach(d => Object.assign(d, classifyDay(d, pkMeta.windMode)));
+  renderPatikra();
+});
+document.getElementById('pk-cal').addEventListener('click', e => {
+  const b = e.target.closest('[data-date]'); if (!b) return;
+  const date = b.dataset.date;
+  if (!document.getElementById('pk-near').checked && !pkDays.some(d => d.date === date && d.ev.length)) {
+    document.getElementById('pk-near').checked = true; renderPatikraList();
+  }
+  const tr = document.querySelector(`#pk-table tr[data-date="${date}"]`);
+  if (tr) { tr.scrollIntoView({ behavior: 'smooth', block: 'center' }); tr.classList.add('flash'); setTimeout(() => tr.classList.remove('flash'), 1600); }
+});
+document.getElementById('pk-csv').addEventListener('click', () => {
+  if (!pkMeta) return;
+  const n1 = v => v == null ? '' : String(Math.round(v * 10) / 10).replace('.', ',');
+  const t = ms => ms ? fmtTime(new Date(ms)) : '';
+  const head = ['Data', 'Stotis', 'Atstumas km', 'Įvykiai', 'Arti ribos', 'Gūsiai max m/s', 'Laikas', 'Vid. vėjas max m/s', 'Krituliai 6 h max mm', '6 h lango pabaiga',
+    'Krituliai per parą mm', 'Sniego prieaugis 12 h cm', 'Sniego danga max cm', 'Kruša', 'Temp. min °C', 'Temp. max °C', 'Stebėjimų val.'];
+  const rows = visiblePkRows().map(d => [d.date, d.station, n1(d.dist), d.ev.map(k => EV[k]).join(', '), d.near.map(k => EV[k]).join(', '), n1(d.gust), t(d.gustT), n1(d.wind),
+    n1(d.rain6), t(d.rain6 ? d.rain6T : 0), n1(d.rainTotal), n1(d.snow12), n1(d.snowMax), d.hail ? 'TAIP ' + t(d.hailT) : '', n1(d.tMin), n1(d.tMax), String(d.coverage)]);
+  const { place, coords, from, to, list, windMode } = pkMeta;
+  const meta = [
+    'Gamtos jėgų patikra pagal ERGO Gyventojų turto draudimo taisyklių (nuo 2022-07-15) II d. 4.4 p. kriterijus',
+    'Draudimo vieta: ' + (place ? place.name : coords.latitude.toFixed(4) + ', ' + coords.longitude.toFixed(4)),
+    `Laikotarpis: ${from} – ${to}`,
+    'Stotys: ' + list.map(s => `${s.name} (${n1(s.dist)} km)`).join(', '),
+    'Audra vertinta pagal: ' + (windMode === 'mean' ? 'vidutinį vėją' : 'vėjo gūsius'),
+    'Šaltinis: LHMT, api.meteo.lt'
+  ];
+  const csv = '﻿' + [...meta.map(m => [m]), [], head, ...rows].map(r => r.map(c => /[;"\n]/.test(c) ? '"' + String(c).replace(/"/g, '""') + '"' : c).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `patikra_${place ? place.code : 'koord'}_${from}_${to}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+function loadPatikra() {
+  if (pkInit) return; pkInit = true;
+  const dateInput = document.getElementById('pk-date');
+  dateInput.max = todayLocal();
+  dateInput.value = qs.get('data') || todayLocal();
+  const v = qs.get('vieta'), k = qs.get('koord');
+  if (k) { document.getElementById('pk-place').value = k; runPatikra(); }
+  else if (v) {
+    (places.length ? Promise.resolve() : loadPlaces().catch(() => {})).then(() => {
+      const p = places.find(x => x.code === v);
+      if (p) { document.getElementById('pk-place').value = p.name; runPatikra(); }
+    });
+  }
+}
+
 /* ================= SKIRTUKAI ================= */
-const TABS = { prognoze: null, stotys: loadStations, upes: loadHydro, gamta: loadJegos };
+const TABS = { prognoze: null, stotys: loadStations, upes: loadHydro, gamta: loadJegos, patikra: loadPatikra };
 function openTab(name) {
   if (!(name in TABS)) name = 'prognoze';
   for (const t of Object.keys(TABS)) {
