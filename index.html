@@ -35,6 +35,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body);
@@ -213,11 +214,11 @@ footer a { color: var(--accent); }
 <script>
 /* ===================== NUSTATYMAI ===================== */
 const CONFIG = {
-  // Tiesioginis LHMT API adresas.
-  apiBase: 'https://api.meteo.lt/v1',
-  // Jei naršyklė blokuoja tiesiogines užklausas (CORS), įrašykite savo
-  // Cloudflare Worker adresą, pvz. 'https://meteo-proxy.vardas.workers.dev/v1'
-  proxyBase: '',
+  // Pagrindinis adresas: Cloudflare Worker tarpinis serveris (LHMT API neleidžia
+  // naršyklei jungtis tiesiogiai iš kitos svetainės).
+  apiBase: 'https://meteo-proxy.traskalas.workers.dev/v1',
+  // Atsarginis adresas, jei tarpinis serveris nepasiekiamas.
+  proxyBase: 'https://api.meteo.lt/v1',
   defaultPlace: 'vilnius',
   tz: 'Europe/Vilnius',
 };
@@ -282,8 +283,8 @@ function errorText(e) {
   if (e && e.status === 429) return 'Per daug užklausų į LHMT API. Palaukite minutę ir atnaujinkite puslapį.';
   if (e && e.status === 404) return 'Duomenų nerasta (404). Galbūt ši stotis ar vietovė šiuo metu duomenų neteikia.';
   if (e && e.status) return 'LHMT serveris grąžino klaidą (' + e.status + '). Pabandykite vėliau.';
-  return 'Nepavyko pasiekti api.meteo.lt. Tikėtina, kad naršyklė blokuoja tiesiogines užklausas į kitą svetainę (CORS). '
-    + 'Įjunkite tarpinį serverį: žr. README failą (Cloudflare Worker) ir įrašykite jo adresą į CONFIG.proxyBase.';
+  return 'Nepavyko gauti duomenų. Patikrinkite interneto ryšį ir atnaujinkite puslapį. '
+    + 'Jei klaida kartojasi, gali būti nepasiekiamas tarpinis serveris (Cloudflare Worker) arba LHMT API.';
 }
 function setStatus(id, text, isError) {
   const el = document.getElementById(id);
@@ -292,7 +293,7 @@ function setStatus(id, text, isError) {
 }
 function showApiMode() {
   document.getElementById('api-mode').textContent =
-    apiBase === CONFIG.proxyBase ? 'Duomenys gaunami per tarpinį serverį.' : '';
+    '';
 }
 
 /* ---------- Laikas ir formatavimas ---------- */
