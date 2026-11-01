@@ -1173,7 +1173,8 @@ function analyse(obs, S, E) {
 const stotyse = n => n + (n % 10 === 1 && n % 100 !== 11 ? ' stotyje' : ' stotyse');
 const level = (v, lim, strictGreater) => v == null ? '' : (strictGreater ? v > lim : v >= lim) ? 'hit' : v >= lim * .8 ? 'near' : '';
 
-async function runJegos() {
+// opts.focus – stoties kodas, kurio valandiniai grafikai rodomi po vertinimo (pvz. atėjus iš patikros).
+async function runJegos(opts = {}) {
   const run = ++jgRun;
   const from = document.getElementById('jg-from').value, to = document.getElementById('jg-to').value;
   if (!from || !to) return setStatus('jg-status', 'Nurodykite abi datas.', true);
@@ -1184,8 +1185,9 @@ async function runJegos() {
   let place = null;
   if (placeText) {
     if (!places.length) { try { await loadPlaces(); } catch (e) {} }
-    place = findPlace(placeText);
-    if (!place) return setStatus('jg-status', 'Tokios vietovės nerasta. Pasirinkite iš siūlomo sąrašo arba palikite lauką tuščią.', true);
+    const c = parseCoords(placeText);
+    place = c ? { code: null, name: `${c.latitude.toFixed(4)}, ${c.longitude.toFixed(4)}`, coordinates: c } : findPlace(placeText);
+    if (!place) return setStatus('jg-status', 'Tokios vietovės nerasta. Pasirinkite iš siūlomo sąrašo, įrašykite koordinates arba palikite lauką tuščią.', true);
     document.getElementById('jg-place').value = place.name;
   } else if (mode !== 'all') mode = 'all';
   const pickMode = document.getElementById('jg-pick').value;
@@ -1221,13 +1223,23 @@ async function runJegos() {
         list = list.concat(pick.list);
       } catch (e) { roadNote = 'Kelių stočių duomenų gauti nepavyko.'; }
     } else if (roadN && !place) roadNote = 'Kelių stotys įtraukiamos, kai nurodyta draudimo vieta.';
+    // Jei atėjome iš patikros su konkrečia stotimi, ji visada įtraukiama.
+    if (opts.focus && !list.some(s => s.code === opts.focus) && place && place.coordinates) {
+      let f = jgStations.find(s => s.code === opts.focus);
+      if (f) f = { ...f, src: 'lhmt' };
+      else f = (await loadRoadStations().catch(() => [])).find(s => s.code === opts.focus);
+      if (f && f.coordinates) list.push({ ...f, dist: haversine(place.coordinates, f.coordinates), brg: bearing(place.coordinates, f.coordinates) });
+    }
     if (filledNets.length) roadNote += (roadNote ? ' ' : '') + `Ne visose pusėse iki ${SPREAD_KM} km rasta ${filledNets.join(' ir ')} stočių, todėl dalis jų parinkta tiesiog kaip artimiausios.`;
     if (total > 420) {
       return setStatus('jg-status', `Per daug duomenų vienam kartui (${list.length} stotys × ${days.length} d.). Visoms stotims rinkitės iki 7 dienų, o nurodžius draudimo vietą ir 2–4 artimiausias stotis – iki ${Math.floor(420 / list.filter(s => s.src !== 'road').length)} dienų.`, true);
     }
     const u = new URL(location.href);
     u.searchParams.set('nuo', from); u.searchParams.set('iki', to);
-    if (place) u.searchParams.set('vieta', place.code);
+    u.searchParams.delete('vieta'); u.searchParams.delete('koord'); u.searchParams.delete('stotis');
+    if (place && place.code) u.searchParams.set('vieta', place.code);
+    else if (place) u.searchParams.set('koord', place.coordinates.latitude.toFixed(4) + ',' + place.coordinates.longitude.toFixed(4));
+    if (opts.focus) u.searchParams.set('stotis', opts.focus);
     if (pickMode === 'spread') u.searchParams.set('kryptys', '1'); else u.searchParams.delete('kryptys');
     history.replaceState(null, '', u);
 
@@ -1268,8 +1280,10 @@ async function runJegos() {
       roadNote,
       roadEmpty ? `${roadEmpty} kelių stotys šiam laikotarpiui duomenų neturi: eismoinfo saugo tik kelias paskutines dienas, senesni duomenys yra tik archyve nuo jo įjungimo.` : ''
     ].filter(Boolean).join(' '));
-    const first = [...jgRows].sort(rowSorter)[0];
+    const focused = opts.focus && jgRows.find(r => r.code === opts.focus);
+    const first = focused || [...jgRows].sort(rowSorter)[0];
     if (first) showJegosDetail(first.code);
+    if (focused) document.getElementById('jg-detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     console.error(e);
     if (run === jgRun) setStatus('jg-status', errorText(e), true);
@@ -1395,7 +1409,7 @@ document.getElementById('jg-csv').addEventListener('click', () => {
   const csv = '﻿' + [...meta.map(m => [m]), [], head, ...lines].map(row => row.map(c => /[;"\n]/.test(c) ? '"' + String(c).replace(/"/g, '""') + '"' : c).join(';')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  a.download = `gamtos-jegos_${jgMeta.from}_${jgMeta.to}${jgMeta.place ? '_' + jgMeta.place.code : ''}.csv`;
+  a.download = `gamtos-jegos_${jgMeta.from}_${jgMeta.to}${jgMeta.place ? '_' + (jgMeta.place.code || 'koord') : ''}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 });
@@ -1406,12 +1420,13 @@ function loadJegos() {
   document.getElementById('jg-to').value = to;
   document.getElementById('jg-from').max = document.getElementById('jg-to').max = todayLocal();
   if (qs.get('kryptys') === '1') document.getElementById('jg-pick').value = 'spread';
-  const v = qs.get('vieta');
-  if (v) {
+  const v = qs.get('vieta'), k = qs.get('koord'), focus = qs.get('stotis') || undefined;
+  if (k) { document.getElementById('jg-place').value = k; runJegos({ focus }); }
+  else if (v) {
     (places.length ? Promise.resolve() : loadPlaces().catch(() => {})).then(() => {
       const p = places.find(x => x.code === v);
       if (p) document.getElementById('jg-place').value = p.name;
-      runJegos();
+      runJegos({ focus });
     });
   } else runJegos(); // be draudimo vietos vertinamos visos LHMT stotys
 }
@@ -1635,6 +1650,9 @@ function renderPatikraList() {
     const link = new URL(location.href);
     link.search = ''; link.searchParams.set('nuo', d.date); link.searchParams.set('iki', d.date);
     if (pkMeta.place) link.searchParams.set('vieta', pkMeta.place.code);
+    else link.searchParams.set('koord', pkMeta.coords.latitude.toFixed(4) + ',' + pkMeta.coords.longitude.toFixed(4));
+    link.searchParams.set('stotis', d.code);
+    if (pkMeta.pickMode === 'spread') link.searchParams.set('kryptys', '1');
     link.hash = 'gamta';
     return `<tr data-date="${d.date}">
       <td>${d.date}<small>${esc(dayName(new Date(d.date + 'T12:00:00Z')))}</small></td>
@@ -1642,12 +1660,34 @@ function renderPatikraList() {
       <td>${d.ev.map(k => tag(k)).join('')}${d.near.map(k => tag(k, true)).join('')}</td>
       <td>${dayMetrics(d).map(esc).join('<br>')}</td>
       <td class="num">${num(d.tMin, 1)} / ${num(d.tMax, 1)}</td>
-      <td><a href="${esc(link.toString())}">Valandiniai duomenys</a></td>
+      <td><a href="${esc(link.toString())}" data-hourly="${esc(d.code)}" data-date="${d.date}">Valandiniai duomenys</a></td>
     </tr>`;
   }).join('');
   document.getElementById('pk-empty').textContent = rows.length ? '' : 'Per šį laikotarpį pasirinktų kriterijų viršijimų nerasta.';
 }
 document.getElementById('pk-filters').addEventListener('change', renderPatikraList);
+// „Valandiniai duomenys“: atidaromas skirtukas „Gamtos jėgos“ tai dienai su tomis pačiomis stotimis,
+// o grafikai rodomi būtent tos eilutės stoties (puslapis neperkraunamas, įkelti duomenys imami iš atminties).
+document.querySelector('#pk-table tbody').addEventListener('click', e => {
+  const a = e.target.closest('a[data-hourly]');
+  if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+  e.preventDefault();
+  const date = a.dataset.date, focus = a.dataset.hourly;
+  jgInit = true;
+  if (!document.getElementById('jg-from').max) document.getElementById('jg-from').max = document.getElementById('jg-to').max = todayLocal();
+  document.getElementById('jg-from').value = date;
+  document.getElementById('jg-to').value = date;
+  document.getElementById('jg-place').value = pkMeta.place ? pkMeta.place.name
+    : `${pkMeta.coords.latitude.toFixed(4)}, ${pkMeta.coords.longitude.toFixed(4)}`;
+  const nL = pkMeta.list.filter(s => s.src !== 'road').length, nR = pkMeta.list.filter(s => s.src === 'road').length;
+  document.getElementById('jg-mode').value = String(Math.min(4, Math.max(2, nL)));
+  document.getElementById('jg-road').value = nR ? String(Math.min(4, Math.max(2, nR))) : '0';
+  document.getElementById('jg-pick').value = pkMeta.pickMode || 'near';
+  history.replaceState(null, '', '#gamta');
+  openTab('gamta');
+  window.scrollTo({ top: 0 });
+  runJegos({ focus });
+});
 document.getElementById('pk-form').addEventListener('submit', e => { e.preventDefault(); runPatikra(); });
 // Pakeitus laikotarpį po patikros, ji atliekama iš naujo (jau įkelti duomenys imami iš atminties).
 document.getElementById('pk-period').addEventListener('change', () => { if (pkMeta) runPatikra(); });
