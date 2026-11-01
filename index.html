@@ -422,10 +422,10 @@ footer a { color: var(--accent); }
       <div class="field" style="flex:0 1 160px">
         <label for="pk-period">Laikotarpis</label>
         <select id="pk-period">
-          <option value="1">1 mėnuo</option>
+          <option value="1" selected>1 mėnuo</option>
           <option value="3">3 mėnesiai</option>
           <option value="6">6 mėnesiai</option>
-          <option value="12" selected>12 mėnesių</option>
+          <option value="12">12 mėnesių</option>
         </select>
       </div>
       <div class="field" style="flex:0 1 190px">
@@ -454,7 +454,7 @@ footer a { color: var(--accent); }
       </div>
       <button class="btn" type="submit" id="pk-go">Tikrinti</button>
     </form>
-    <div id="pk-status" class="status">Įrašykite draudimo vietą ir spauskite „Tikrinti“. Pirmą kartą 12 mėnesių duomenys įkeliami iki 3 minučių vienai stočiai, trumpesnio laikotarpio – greičiau, pakartotinai – dar greičiau.</div>
+    <div id="pk-status" class="status">Įrašykite draudimo vietą ir spauskite „Tikrinti“. 1 mėnesio duomenys įkeliami per kelias sekundes. Ilgesnis laikotarpis (iki 12 mėn.) pirmą kartą gali užtrukti iki 3 minučių vienai stočiai, pakartotinai – greičiau.</div>
     <div class="progress" id="pk-progress" hidden><div></div></div>
     <div id="pk-sum" class="crit" hidden></div>
     <div class="panel" id="pk-map-panel" hidden>
@@ -1462,7 +1462,7 @@ async function runPatikra() {
   const run = ++pkRun;
   const text = document.getElementById('pk-place').value.trim();
   const date = document.getElementById('pk-date').value || todayLocal();
-  const months = Number(document.getElementById('pk-period').value) || 12;
+  const months = Number(document.getElementById('pk-period').value) || 1;
   const n = Number(document.getElementById('pk-n').value) || 1;
   if (!text) return setStatus('pk-status', 'Įrašykite draudimo vietą: vietovės pavadinimą arba koordinates.', true);
   let place = null, coords = parseCoords(text);
@@ -1505,7 +1505,7 @@ async function runPatikra() {
       ? `Ne visose pusėse iki ${SPREAD_KM} km rasta ${filledNets.join(' ir ')} stočių, todėl dalis jų parinkta tiesiog kaip artimiausios.` : '';
     const u = new URL(location.href);
     u.searchParams.set('data', to);
-    if (months === 12) u.searchParams.delete('men'); else u.searchParams.set('men', months);
+    u.searchParams.set('men', months);
     if (pickMode === 'spread') u.searchParams.set('kryptys', '1'); else u.searchParams.delete('kryptys');
     if (place) u.searchParams.set('vieta', place.code); else u.searchParams.set('koord', coords.latitude.toFixed(4) + ',' + coords.longitude.toFixed(4));
     if (!place) u.searchParams.delete('vieta'); else u.searchParams.delete('koord');
