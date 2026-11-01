@@ -399,7 +399,7 @@ footer a { color: var(--accent); }
       <div class="chart-box sm"><canvas id="jg-c-snow" aria-label="Sniego danga ir temperatūra"></canvas></div>
     </div>
     <div class="disclaimer">
-      <p><b>Kaip skaičiuojama.</b> Gūsiai – didžiausias vėjo gūsis per valandą; taisyklėse nenurodyta, ar 18 m/s reiškia vidutinį vėjo greitį ar gūsį, todėl rodomi abu. Krituliai 6 h – didžiausia slenkanti 6 valandų valandinių kritulių suma. Sniego prieaugis 12 h – didžiausias sniego dangos storio padidėjimas per 12 valandų (sniegą matuoja ne visos stotys ir ne kas valandą). Kruša – kai stotis užfiksavo krušą kaip orų reiškinį; ji dažnai būna labai lokali ir stotyje gali būti neužfiksuota.</p>
+      <p><b>Kaip skaičiuojama.</b> Gūsiai – didžiausias vėjo gūsis per valandą; audra vertinama pagal gūsius, vidutinis vėjas rodomas tik informacijai. Krituliai 6 h – didžiausia slenkanti 6 valandų valandinių kritulių suma. Sniego prieaugis 12 h – didžiausias sniego dangos storio padidėjimas per 12 valandų (sniegą matuoja ne visos stotys ir ne kas valandą). Kruša – kai stotis užfiksavo krušą kaip orų reiškinį; ji dažnai būna labai lokali ir stotyje gali būti neužfiksuota.</p>
       <p><b>Kelių stotys</b> (Via Lietuva, eismoinfo.lt) yra papildomas šaltinis, ne oficialus LHMT tinklas. Gūsiai jose matuojami tiesiogiai, kruša nustatoma pagal kritulių tipą, o kritulių kiekis apskaičiuojamas iš intensyvumo (mm/h), todėl yra apytikslis. Sniego dangos storio kelių stotys nematuoja. Eismoinfo saugo tik kelias paskutines dienas, senesni duomenys yra tik iš archyvo, nuo jo įjungimo.</p>
       <p>Tai orientacinis vertinimas, o ne draudiko sprendimas. Taisyklės leidžia įvykį nustatyti ir pagal panašius nuostolius kitiems geros būklės pastatams draudimo vietos zonoje.</p>
     </div>
@@ -450,13 +450,6 @@ footer a { color: var(--accent); }
         <select id="pk-pick">
           <option value="near">Artimiausios</option>
           <option value="spread">Iš skirtingų pusių</option>
-        </select>
-      </div>
-      <div class="field" style="flex:0 1 200px">
-        <label for="pk-wind">Audrą vertinti pagal</label>
-        <select id="pk-wind">
-          <option value="gust">Vėjo gūsius</option>
-          <option value="mean">Vidutinį vėją</option>
         </select>
       </div>
       <button class="btn" type="submit" id="pk-go">Tikrinti</button>
@@ -1293,9 +1286,8 @@ function renderJegosCrit() {
       <span class="w">${t ? `Daugiausia: ${num(t[key], 1)} ${unit}, ${esc(t.name)}` : ''}</span><span class="rule">${rule}</span></div>`;
   };
   const hailRows = jgRows.filter(r => r.hail > 0);
-  const windHits = jgRows.filter(r => level(r.wind, CRIT.gust, true) === 'hit').length;
   document.getElementById('jg-crit').innerHTML = [
-    card('Audra (gūsiai)', `Riba: daugiau kaip 18 m/s · vid. vėjas viršijo ${stotyse(windHits)}`, CRIT.gust, 'gust', 'm/s', true),
+    card('Audra (gūsiai)', 'Riba: vėjo gūsiai daugiau kaip 18 m/s', CRIT.gust, 'gust', 'm/s', true),
     card('Liūtis', 'Riba: 15 mm ir daugiau per 6 val.', CRIT.rain6h, 'rain6', 'mm', false),
     card('Sniego slėgis', 'Riba: 20 cm ir daugiau per 12 val.', CRIT.snow12h, 'snow12', 'cm', false),
     `<div class="stat ${hailRows.length ? 'hit' : 'ok'}"><span class="k">Kruša</span><span class="v">${hailRows.length ? 'Užfiksuota ' + stotyse(hailRows.length) : 'Neužfiksuota'}</span>
@@ -1319,7 +1311,7 @@ function renderJegosTable() {
     <td>${esc(r.name)}<small>${esc(srcLabel(r))}</small></td>
     <td class="num">${r.dist != null ? num(r.dist, 0) + ' km' + (r.brg != null ? ' ' + compassBrg(r.brg) : '') : '—'}</td>
     ${tcell(r.gust, r.gustT, level(r.gust, CRIT.gust, true))}
-    ${tcell(r.wind, r.windT, level(r.wind, CRIT.gust, true))}
+    ${tcell(r.wind, r.windT, '')}
     ${tcell(r.rain6, r.rain6 ? r.rain6T : null, level(r.rain6, CRIT.rain6h))}
     <td class="num">${num(r.rainTotal, 1)}</td>
     ${tcell(r.snow12, r.snow12 ? r.snow12T : null, level(r.snow12, CRIT.snow12h), 0)}
@@ -1436,8 +1428,8 @@ function parseCoords(text) {
   if (lat < 53 || lat > 57 || lon < 20 || lon > 27.5) return null;
   return { latitude: lat, longitude: lon };
 }
-function classifyDay(r, windMode) {
-  const windVal = windMode === 'mean' ? r.wind : r.gust;
+function classifyDay(r) {
+  const windVal = r.gust;
   const ev = [], near = [];
   const chk = (key, val, lim, strict) => { const l = level(val, lim, strict); if (l === 'hit') ev.push(key); else if (l === 'near') near.push(key); };
   chk('wind', windVal, CRIT.gust, true);
@@ -1457,7 +1449,6 @@ async function runPatikra() {
   const date = document.getElementById('pk-date').value || todayLocal();
   const months = Number(document.getElementById('pk-period').value) || 12;
   const n = Number(document.getElementById('pk-n').value) || 1;
-  const windMode = document.getElementById('pk-wind').value;
   if (!text) return setStatus('pk-status', 'Įrašykite draudimo vietą: vietovės pavadinimą arba koordinates.', true);
   let place = null, coords = parseCoords(text);
   if (!coords) {
@@ -1544,11 +1535,11 @@ async function runPatikra() {
         let q = p; while (q < obs.length && obs[q].ms < dE) q++;
         const slice = obs.slice(p, q);
         const r = analyse(slice, dS, dE);
-        const cls = classifyDay(r, windMode);
+        const cls = classifyDay(r);
         pkDays.push({ date: d, station: s.name, code: s.code, src: s.src, road: s.road, dist: s.dist, ...r, ...cls, hasData: r.coverage > 0 });
       }
     });
-    pkMeta = { from, to, months, place, coords, list, windMode, pickMode, S, E };
+    pkMeta = { from, to, months, place, coords, list, pickMode, S, E };
     renderPatikra();
     setProgress(null);
     const pkMapPanel = document.getElementById('pk-map-panel');
@@ -1570,7 +1561,7 @@ async function runPatikra() {
   }
 }
 function renderPatikra() {
-  const { list, from, to, months, place, coords, windMode } = pkMeta;
+  const { list, from, to, months, place, coords } = pkMeta;
   // Santrauka: unikalios dienos pagal įvykį
   const byDate = new Map();
   for (const d of pkDays) {
@@ -1580,13 +1571,13 @@ function renderPatikra() {
   }
   const count = k => [...byDate.values()].filter(e => e.ev.has(k)).length;
   const maxOf = key => pkDays.filter(d => d[key] != null).sort((a, b) => b[key] - a[key])[0];
-  const windKey = windMode === 'mean' ? 'wind' : 'gust';
+  const windKey = 'gust';
   const mw = maxOf(windKey), mr = maxOf('rain6'), ms = maxOf('snow12');
   const dienos = k => { const c = count(k); return c + (c % 10 === 1 && c % 100 !== 11 ? ' diena' : (c % 10 >= 2 && c % 10 <= 9 && !(c % 100 >= 11 && c % 100 <= 19)) ? ' dienos' : ' dienų'); };
   const card = (k, rule, max, unit) => `<div class="stat ${count(k) ? 'hit' : 'ok'}"><span class="k">${EV[k]}</span><span class="v">${dienos(k)}</span>
     <span class="w">${max === undefined ? '' : 'Didžiausia: ' + (max ? num(max[k === 'wind' ? windKey : k === 'rain' ? 'rain6' : 'snow12'], 1) + ' ' + unit + ', ' + max.date : '—')}</span><span class="rule">${rule}</span></div>`;
   document.getElementById('pk-sum').innerHTML = [
-    card('wind', windMode === 'mean' ? 'Vidutinis vėjas daugiau kaip 18 m/s' : 'Vėjo gūsiai daugiau kaip 18 m/s', mw, 'm/s'),
+    card('wind', 'Vėjo gūsiai daugiau kaip 18 m/s', mw, 'm/s'),
     card('rain', '15 mm ir daugiau per 6 val.', mr, 'mm'),
     card('snow', '20 cm ir daugiau per 12 val.', ms, 'cm'),
     card('hail', 'Stotyje užfiksuota kruša', undefined, ''),
@@ -1660,12 +1651,6 @@ document.getElementById('pk-filters').addEventListener('change', renderPatikraLi
 document.getElementById('pk-form').addEventListener('submit', e => { e.preventDefault(); runPatikra(); });
 // Pakeitus laikotarpį po patikros, ji atliekama iš naujo (jau įkelti duomenys imami iš atminties).
 document.getElementById('pk-period').addEventListener('change', () => { if (pkMeta) runPatikra(); });
-document.getElementById('pk-wind').addEventListener('change', () => {
-  if (!pkMeta) return;
-  pkMeta.windMode = document.getElementById('pk-wind').value;
-  pkDays.forEach(d => Object.assign(d, classifyDay(d, pkMeta.windMode)));
-  renderPatikra();
-});
 document.getElementById('pk-cal').addEventListener('click', e => {
   const b = e.target.closest('[data-date]'); if (!b) return;
   const date = b.dataset.date;
@@ -1683,14 +1668,14 @@ document.getElementById('pk-csv').addEventListener('click', () => {
     'Krituliai per parą mm', 'Sniego prieaugis 12 h cm', 'Sniego danga max cm', 'Kruša', 'Temp. min °C', 'Temp. max °C', 'Stebėjimų val.'];
   const rows = visiblePkRows().map(d => [d.date, d.station, srcLabel(d), n1(d.dist), d.ev.map(k => EV[k]).join(', '), d.near.map(k => EV[k]).join(', '), n1(d.gust), t(d.gustT), n1(d.wind),
     n1(d.rain6), t(d.rain6 ? d.rain6T : 0), n1(d.rainTotal), n1(d.snow12), n1(d.snowMax), d.hail ? 'TAIP ' + t(d.hailT) : '', n1(d.tMin), n1(d.tMax), String(d.coverage)]);
-  const { place, coords, from, to, months, list, windMode } = pkMeta;
+  const { place, coords, from, to, months, list } = pkMeta;
   const meta = [
     'Gamtos jėgų patikra pagal ERGO Gyventojų turto draudimo taisyklių (nuo 2022-07-15) II d. 4.4 p. kriterijus',
     'Draudimo vieta: ' + (place ? place.name : coords.latitude.toFixed(4) + ', ' + coords.longitude.toFixed(4)),
     `Laikotarpis: ${from} – ${to} (${menLabel(months)})`,
     'Stotys: ' + list.map(s => `${s.name} (${n1(s.dist)} km ${compassBrg(s.brg)})`).join(', '),
     'Stočių parinkimas: ' + (pkMeta.pickMode === 'spread' ? 'iš skirtingų pusių' : 'artimiausios'),
-    'Audra vertinta pagal: ' + (windMode === 'mean' ? 'vidutinį vėją' : 'vėjo gūsius'),
+    'Audra vertinta pagal vėjo gūsius',
     'Šaltiniai: LHMT (api.meteo.lt); Via Lietuva kelių oro sąlygų stotys (eismoinfo.lt) – papildomi duomenys, kritulių kiekis apskaičiuotas iš intensyvumo'
   ];
   const csv = '﻿' + [...meta.map(m => [m]), [], head, ...rows].map(r => r.map(c => /[;"\n]/.test(c) ? '"' + String(c).replace(/"/g, '""') + '"' : c).join(';')).join('\r\n');
