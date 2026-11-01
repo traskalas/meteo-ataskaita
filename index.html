@@ -436,6 +436,13 @@ footer a { color: var(--accent); }
         </select>
       </div>
       <div class="field" style="flex:0 1 200px">
+        <label for="pk-pick">Stočių parinkimas</label>
+        <select id="pk-pick">
+          <option value="near">Artimiausios</option>
+          <option value="spread">Iš skirtingų pusių</option>
+        </select>
+      </div>
+      <div class="field" style="flex:0 1 200px">
         <label for="pk-wind">Audrą vertinti pagal</label>
         <select id="pk-wind">
           <option value="gust">Vėjo gūsius</option>
@@ -691,7 +698,7 @@ function stationMap(id, center, label, chosen, background) {
     if (!s.coordinates) continue;
     L.polyline([c, ll(s)], { color: color(s), weight: 1.5, dashArray: '5 5', opacity: .8 }).addTo(m.layer);
     L.circleMarker(ll(s), { radius: 7, color: '#fff', weight: 2, fillColor: color(s), fillOpacity: 1 })
-      .bindTooltip(`${esc(s.name)} · ${num(haversine(center, s.coordinates), 1)} km`, { permanent: chosen.length <= 10, direction: 'right', offset: [8, 0], className: 'mt' })
+      .bindTooltip(`${esc(s.name)} · ${num(haversine(center, s.coordinates), 1)} km ${compassBrg(bearing(center, s.coordinates))}`, { permanent: chosen.length <= 10, direction: 'right', offset: [8, 0], className: 'mt' })
       .addTo(m.layer);
   }
   L.circleMarker(c, { radius: 9, color: '#fff', weight: 3, fillColor: css('--bad'), fillOpacity: 1 })
@@ -1084,6 +1091,35 @@ function haversine(a, b) {
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
+// Kryptis (azimutas) nuo a iki b laipsniais: 0 = šiaurė, 90 = rytai.
+function bearing(a, b) {
+  const rad = x => x * Math.PI / 180;
+  const f1 = rad(a.latitude), f2 = rad(b.latitude), dl = rad(b.longitude - a.longitude);
+  const y = Math.sin(dl) * Math.cos(f2), x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+const angleDiff = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+const SPREAD_KM = 40;
+// Stočių parinkimas. 'near' – n artimiausių. 'spread' – pirmoji artimiausia, o kiekviena kita –
+// artimiausia stotis, nutolusi nuo jau parinktų krypčių bent 360/(n+1) laipsnių (2 stotys – 120°, 3 – 90°)
+// ir esanti ne toliau kaip 40 km (arba 2 kartus toliau nei artimiausia, jei ši pati toli).
+// Jei kitoje pusėje tinkamos stoties nėra, imama tiesiog kita artimiausia (filled = true).
+function pickStations(arr, center, n, mode) {
+  const all = arr.filter(s => s.coordinates)
+    .map(s => ({ ...s, dist: haversine(center, s.coordinates), brg: bearing(center, s.coordinates) }))
+    .sort((a, b) => a.dist - b.dist);
+  if (mode !== 'spread' || n < 2 || !all.length) return { list: all.slice(0, n), filled: false };
+  const minAngle = 360 / (n + 1), maxKm = Math.max(SPREAD_KM, all[0].dist * 2);
+  const list = [all[0]];
+  let filled = false;
+  while (list.length < n) {
+    const next = all.find(s => !list.includes(s) && s.dist <= maxKm && list.every(c => angleDiff(c.brg, s.brg) >= minAngle));
+    if (next) list.push(next);
+    else { const f = all.find(s => !list.includes(s)); if (!f) break; list.push(f); filled = true; }
+  }
+  return { list, filled };
+}
+const compassBrg = deg => COMPASS[Math.round(deg / 45) % 8];
 
 function analyse(obs, S, E) {
   const inR = obs.filter(o => o.ms >= S && o.ms < E);
@@ -1421,9 +1457,11 @@ async function runPatikra() {
   try {
     setStatus('pk-status', 'Ieškoma artimiausių stočių…'); setProgress(0);
     if (!jgStations) jgStations = await api('/stations');
-    let list = jgStations.filter(s => s.coordinates)
-      .map(s => ({ ...s, src: 'lhmt', dist: haversine(coords, s.coordinates) }))
-      .sort((a, b) => a.dist - b.dist).slice(0, n);
+    const pickMode = document.getElementById('pk-pick').value;
+    const filledNets = [];
+    const lhmtPick = pickStations(jgStations.map(s => ({ ...s, src: 'lhmt' })), coords, n, pickMode);
+    if (lhmtPick.filled) filledNets.push('LHMT');
+    let list = lhmtPick.list;
     if (!list.length) throw Object.assign(new Error('no stations'), { status: 404 });
     const roadN = Number(document.getElementById('pk-road').value) || 0;
     let roadNote = '', archive = null;
@@ -1431,12 +1469,17 @@ async function runPatikra() {
       try {
         const [rl, st] = await Promise.all([loadRoadStations(), eismoApi('/busena').catch(() => null)]);
         archive = st;
-        list = list.concat(rl.map(s => ({ ...s, dist: haversine(coords, s.coordinates) })).sort((a, b) => a.dist - b.dist).slice(0, roadN));
+        const roadPick = pickStations(rl, coords, roadN, pickMode);
+        if (roadPick.filled) filledNets.push('kelių');
+        list = list.concat(roadPick.list);
       } catch (e) { roadNote = 'Kelių stočių duomenų gauti nepavyko.'; }
     }
+    const spreadNote = filledNets.length
+      ? `Ne visose pusėse iki ${SPREAD_KM} km rasta ${filledNets.join(' ir ')} stočių, todėl dalis jų parinkta tiesiog kaip artimiausios.` : '';
     const u = new URL(location.href);
     u.searchParams.set('data', to);
     if (months === 12) u.searchParams.delete('men'); else u.searchParams.set('men', months);
+    if (pickMode === 'spread') u.searchParams.set('kryptys', '1'); else u.searchParams.delete('kryptys');
     if (place) u.searchParams.set('vieta', place.code); else u.searchParams.set('koord', coords.latitude.toFixed(4) + ',' + coords.longitude.toFixed(4));
     if (!place) u.searchParams.delete('vieta'); else u.searchParams.delete('koord');
     history.replaceState(null, '', u);
@@ -1484,7 +1527,7 @@ async function runPatikra() {
         pkDays.push({ date: d, station: s.name, code: s.code, src: s.src, road: s.road, dist: s.dist, ...r, ...cls, hasData: r.coverage > 0 });
       }
     });
-    pkMeta = { from, to, months, place, coords, list, windMode, S, E };
+    pkMeta = { from, to, months, place, coords, list, windMode, pickMode, S, E };
     renderPatikra();
     setProgress(null);
     const pkMapPanel = document.getElementById('pk-map-panel');
@@ -1498,7 +1541,7 @@ async function runPatikra() {
     setStatus('pk-status', [
       failed ? `Dalies užklausų nepavyko (${failed} iš ${res.length}).` : '',
       noData.length ? `Stotis ${noData.join(', ')} šiuo laikotarpiu duomenų neteikė – rinkitės daugiau stočių.` : '',
-      roadNote, roadInfo
+      roadNote, roadInfo, spreadNote
     ].filter(Boolean).join(' '));
   } catch (e) {
     console.error(e); setProgress(null);
@@ -1531,7 +1574,7 @@ function renderPatikra() {
 
   document.getElementById('pk-cal-title').textContent = `Įvykių kalendorius, ${from} – ${to} (${menLabel(months)})`;
   document.getElementById('pk-stations').textContent = (place ? place.name : `${num(coords.latitude, 4)}, ${num(coords.longitude, 4)}`) + ' · ' +
-    list.map(s => `${s.name} (${s.src === 'road' ? 'kelių st., ' : ''}${num(s.dist, 0)} km${s.src === 'road' && s.firstMs ? ', duomenys nuo ' + dayKey(new Date(s.firstMs)) : ''})`).join(', ');
+    list.map(s => `${s.name} (${s.src === 'road' ? 'kelių st., ' : ''}${num(s.dist, 0)} km ${compassBrg(s.brg)}${s.src === 'road' && s.firstMs ? ', duomenys nuo ' + dayKey(new Date(s.firstMs)) : ''})`).join(', ');
   // Kalendorius
   const monthsList = [];
   for (let d = from.slice(0, 7) + '-01'; d <= to; d = addDays(d, 1)) {
@@ -1624,7 +1667,8 @@ document.getElementById('pk-csv').addEventListener('click', () => {
     'Gamtos jėgų patikra pagal ERGO Gyventojų turto draudimo taisyklių (nuo 2022-07-15) II d. 4.4 p. kriterijus',
     'Draudimo vieta: ' + (place ? place.name : coords.latitude.toFixed(4) + ', ' + coords.longitude.toFixed(4)),
     `Laikotarpis: ${from} – ${to} (${menLabel(months)})`,
-    'Stotys: ' + list.map(s => `${s.name} (${n1(s.dist)} km)`).join(', '),
+    'Stotys: ' + list.map(s => `${s.name} (${n1(s.dist)} km ${compassBrg(s.brg)})`).join(', '),
+    'Stočių parinkimas: ' + (pkMeta.pickMode === 'spread' ? 'iš skirtingų pusių' : 'artimiausios'),
     'Audra vertinta pagal: ' + (windMode === 'mean' ? 'vidutinį vėją' : 'vėjo gūsius'),
     'Šaltiniai: LHMT (api.meteo.lt); Via Lietuva kelių oro sąlygų stotys (eismoinfo.lt) – papildomi duomenys, kritulių kiekis apskaičiuotas iš intensyvumo'
   ];
@@ -1642,6 +1686,7 @@ function loadPatikra() {
   dateInput.value = qs.get('data') || todayLocal();
   const men = Number(qs.get('men'));
   if (PERIODS.includes(men)) document.getElementById('pk-period').value = String(men);
+  if (qs.get('kryptys') === '1') document.getElementById('pk-pick').value = 'spread';
   const v = qs.get('vieta'), k = qs.get('koord');
   if (k) { document.getElementById('pk-place').value = k; runPatikra(); }
   else if (v) {
