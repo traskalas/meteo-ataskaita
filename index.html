@@ -188,6 +188,57 @@ td small { display: block; font: 11px var(--font-data); color: var(--muted); fon
 }
 footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 14px; }
 footer a { color: var(--accent); }
+/* Spausdinimas / PDF */
+.print-head { display: none; }
+.btn.pdf::before { content: "⎙ "; }
+/* Ruošiant spausdinimui puslapis laikinai siaurinamas iki A4 pločio, kad grafikai ir žemėlapis būtų perpiešti tinkamo dydžio. */
+html.printing .wrap { width: 700px; max-width: none; }
+html.printing, :root.printing {
+  --bg: #ffffff; --surface: #ffffff; --ink: #0f1f29; --muted: #4f626e; --line: #d5e0e6;
+  --accent: #0a7584; --accent-soft: #e4f2f4; --warm: #c9512a; --rain: #2d6bd1;
+  --good: #1f8a4c; --bad: #b8322a; --warn: #b26b00;
+  --ev-wind: #0a7584; --ev-rain: #2d6bd1; --ev-snow: #7a4fc4; --ev-hail: #c9512a; --ev-near: #e3c48a; color-scheme: light;
+}
+html.printing .map-box .leaflet-tile-pane { filter: none; }
+@page { size: A4; margin: 12mm; }
+@media print {
+  :root {
+    --bg: #ffffff; --surface: #ffffff; --ink: #0f1f29; --muted: #4f626e; --line: #d5e0e6;
+    --accent: #0a7584; --accent-soft: #e4f2f4; --warm: #c9512a; --rain: #2d6bd1;
+    --good: #1f8a4c; --bad: #b8322a; --warn: #b26b00;
+    --ev-wind: #0a7584; --ev-rain: #2d6bd1; --ev-snow: #7a4fc4; --ev-hail: #c9512a; --ev-near: #e3c48a; color-scheme: light;
+  }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff; padding: 0; font-size: 12px; }
+  .wrap { width: auto !important; max-width: none; padding: 0; gap: 12px; }
+  .wrap > header, nav.tabs, form.controls, .status, .progress, .row-actions, .filters, .no-print,
+  .leaflet-control-zoom { display: none !important; }
+  .print-head { display: grid; gap: 4px; border-bottom: 2px solid var(--ink); padding-bottom: 8px; }
+  .print-head h1 { font-size: 20px; }
+  .print-head dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 4px 0 0; font-size: 12px; }
+  .print-head dt { color: var(--muted); }
+  .print-head dd { margin: 0; }
+  .panel, .stat, .disclaimer { border-radius: 6px; }
+  .panel { padding: 10px; }
+  .panel, .crit, .panel header, .map-box, .chart-box, .cal .m, .stat, .legend { break-inside: avoid; }
+  .crit { grid-template-columns: repeat(4, 1fr); }
+  .stat .v { font-size: 17px; }
+  .panel header { break-after: avoid; }
+  .map-box { height: 300px; }
+  .map-box .leaflet-tile-pane { filter: none !important; }
+  .leaflet-control-attribution { background: rgba(255, 255, 255, .8) !important; color: #4f626e; }
+  .table-wrap { overflow: visible; }
+  table { font-size: 10.5px; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th, td { padding: 4px 6px; }
+  #jg-table th, #jg-table td { white-space: normal; }
+  #pk-table th:last-child, #pk-table td:last-child { display: none; }
+  #pk-table a, footer a { color: inherit; text-decoration: none; }
+  tbody tr:hover { background: none; }
+  .cal { grid-template-columns: repeat(6, 1fr); }
+  footer { font-size: 10px; }
+}
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 </head>
@@ -300,7 +351,8 @@ footer a { color: var(--accent); }
 
   <!-- GAMTOS JĖGOS -->
   <section class="view" id="view-gamta" role="tabpanel" aria-labelledby="tab-gamta" hidden>
-    <div class="disclaimer">
+    <div class="print-head" id="jg-print-head"></div>
+    <div class="disclaimer no-print">
       <p><strong>Gamtos jėgų kriterijai pagal ERGO Gyventojų turto draudimo taisykles</strong> (galioja nuo 2022-07-15, II dalies 4.4 p.):
         audra – vėjas daugiau kaip <b>18 m/s</b>; liūtis – <b>15 mm</b> ir daugiau per <b>6 val.</b> ar trumpiau;
         sniego slėgis – <b>20 cm</b> sniego per <b>12 val.</b> ar trumpiau; kruša – ledo gabaliukų krituliai.
@@ -369,9 +421,10 @@ footer a { color: var(--accent); }
         <h2 id="jg-title">Rodikliai pagal stotis</h2>
         <div class="row-actions">
           <button class="btn ghost" type="button" id="jg-csv">Atsisiųsti CSV</button>
+          <button class="btn pdf" type="button" id="jg-pdf">Spausdinti / PDF</button>
         </div>
       </header>
-      <span class="note">Raudona – kriterijus viršytas, oranžinė – pasiekta ne mažiau kaip 80 % ribos. Paspauskite eilutę, kad pamatytumėte valandinius grafikus.</span>
+      <span class="note">Raudona – kriterijus viršytas, oranžinė – pasiekta ne mažiau kaip 80 % ribos.<span class="no-print"> Paspauskite eilutę, kad pamatytumėte valandinius grafikus.</span></span>
       <div class="table-wrap">
         <table id="jg-table">
           <thead><tr>
@@ -407,7 +460,8 @@ footer a { color: var(--accent); }
 
   <!-- PATIKRA -->
   <section class="view" id="view-patikra" role="tabpanel" aria-labelledby="tab-patikra" hidden>
-    <div class="disclaimer">
+    <div class="print-head" id="pk-print-head"></div>
+    <div class="disclaimer no-print">
       <p><strong>Patikra draudimo vietai.</strong> Nurodykite draudimo vietą, užklausos datą ir laikotarpį (1, 3, 6 arba 12 mėnesių). Bus patikrinti artimiausios LHMT stoties stebėjimai per pasirinktą laikotarpį iki tos datos ir parodytos dienos, kai viršyti ERGO taisyklių gamtos jėgų kriterijai: audra (daugiau kaip 18 m/s), liūtis (15 mm per 6 val.), sniego slėgis (20 cm per 12 val.), kruša.</p>
     </div>
     <form class="controls" id="pk-form">
@@ -485,7 +539,7 @@ footer a { color: var(--accent); }
     <div class="panel" id="pk-list-panel" hidden>
       <header>
         <h2>Dienos, kai viršyti kriterijai</h2>
-        <div class="row-actions"><button class="btn ghost" type="button" id="pk-csv">Atsisiųsti CSV</button></div>
+        <div class="row-actions"><button class="btn ghost" type="button" id="pk-csv">Atsisiųsti CSV</button><button class="btn pdf" type="button" id="pk-pdf">Spausdinti / PDF</button></div>
       </header>
       <div class="filters" id="pk-filters">
         <label><input type="checkbox" value="wind" checked>Audra</label>
@@ -682,10 +736,10 @@ function stationMap(id, center, label, chosen, background) {
   let m = maps[id];
   if (!m) {
     const map = L.map(id, { scrollWheelZoom: false, zoomSnap: .25 });
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
     }).addTo(map);
-    m = maps[id] = { map, layer: L.layerGroup().addTo(map) };
+    m = maps[id] = { map, tiles, layer: L.layerGroup().addTo(map) };
   }
   m.last = [center, label, chosen, background];
   m.layer.clearLayers();
@@ -1742,6 +1796,96 @@ function loadPatikra() {
     });
   }
 }
+
+/* ================= SPAUSDINIMAS / PDF ================= */
+// Mygtukas paruošia šviesų A4 vaizdą: užpildo antraštę, perpiešia grafikus ir žemėlapį A4 pločiu,
+// palaukia, kol įsikels žemėlapio fonas, ir atidaro naršyklės spausdinimo langą („Išsaugoti kaip PDF“).
+const dl = rows => '<dl>' + rows.filter(r => r && r[1]).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl>';
+const nowText = () => new Date().toLocaleString('lt-LT', { timeZone: CONFIG.tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+const stationText = s => `${s.name} (${s.src === 'road' ? 'kelių st., ' : ''}${num(s.dist, 1)} km${s.brg != null ? ' ' + compassBrg(s.brg) : ''})`;
+function fillPrintHead(kind) {
+  if (kind === 'patikra' && pkMeta) {
+    const { place, coords, from, to, months, list, pickMode } = pkMeta;
+    document.getElementById('pk-print-head').innerHTML = `<h1>Gamtos jėgų patikra</h1>` + dl([
+      ['Draudimo vieta', place ? place.name : `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`],
+      ['Koordinatės', `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`],
+      ['Laikotarpis', `${from} – ${to} (${menLabel(months)})`],
+      ['LHMT stotys', list.filter(s => s.src !== 'road').map(stationText).join(', ')],
+      ['Kelių stotys', list.filter(s => s.src === 'road').map(stationText).join(', ')],
+      ['Stočių parinkimas', pickMode === 'spread' ? 'iš skirtingų pusių' : 'artimiausios'],
+      ['Kriterijai', 'ERGO Gyventojų turto draudimo taisyklės (nuo 2022-07-15), II d. 4.4 p.: audra – vėjo gūsiai > 18 m/s; liūtis – ≥ 15 mm per 6 val.; sniego slėgis – ≥ 20 cm per 12 val.; kruša'],
+      ['Parengta', nowText()],
+      ['Nuoroda', location.href]
+    ]);
+    return `Gamtos-jegu-patikra_${place ? place.code : 'koord'}_${from}_${to}`;
+  }
+  if (kind === 'gamta' && jgMeta.from) {
+    const { from, to, place } = jgMeta;
+    const pick = document.getElementById('jg-pick').value;
+    document.getElementById('jg-print-head').innerHTML = `<h1>Gamtos jėgų vertinimas</h1>` + dl([
+      ['Laikotarpis', from + (to !== from ? ' – ' + to : '')],
+      ['Draudimo vieta', place ? place.name : 'nenurodyta (vertinamos visos LHMT stotys)'],
+      place && place.coordinates ? ['Koordinatės', `${place.coordinates.latitude.toFixed(4)}, ${place.coordinates.longitude.toFixed(4)}`] : null,
+      place ? ['LHMT stotys', jgRows.filter(s => s.src !== 'road').map(stationText).join(', ')] : null,
+      place ? ['Kelių stotys', jgRows.filter(s => s.src === 'road').map(stationText).join(', ')] : null,
+      place ? ['Stočių parinkimas', pick === 'spread' ? 'iš skirtingų pusių' : 'artimiausios'] : null,
+      ['Kriterijai', 'ERGO Gyventojų turto draudimo taisyklės (nuo 2022-07-15), II d. 4.4 p.: audra – vėjo gūsiai > 18 m/s; liūtis – ≥ 15 mm per 6 val.; sniego slėgis – ≥ 20 cm per 12 val.; kruša'],
+      ['Valandiniai grafikai', document.getElementById('jg-detail').hidden ? '' : document.getElementById('jg-dtitle').textContent],
+      ['Parengta', nowText()],
+      ['Nuoroda', location.href]
+    ]);
+    return `Gamtos-jegos_${from}_${to}${place ? '_' + (place.code || 'koord') : ''}`;
+  }
+  return null;
+}
+let printPrepared = false, printTitle = null;
+function redrawForPrint() {
+  const anim = window.Chart && Chart.defaults.animation, dpr = window.Chart && Chart.defaults.devicePixelRatio;
+  if (window.Chart) { Chart.defaults.animation = false; Chart.defaults.devicePixelRatio = printPrepared ? 2 : undefined; }
+  for (const id of Object.keys(builders)) drawChart(id, builders[id]);
+  if (window.Chart) { Chart.defaults.animation = anim; Chart.defaults.devicePixelRatio = dpr; }
+  for (const id of Object.keys(maps)) if (maps[id].last) stationMap(id, ...maps[id].last);
+}
+function visibleMaps() {
+  return Object.values(maps).filter(m => m.map.getContainer().offsetParent !== null);
+}
+function preparePrint(kind) {
+  printTitle = document.title;
+  const name = fillPrintHead(kind);
+  if (name) document.title = name;
+  printPrepared = true;
+  document.documentElement.classList.add('printing');
+  redrawForPrint();
+}
+function restoreAfterPrint() {
+  if (!printPrepared) return;
+  printPrepared = false;
+  document.documentElement.classList.remove('printing');
+  if (printTitle) document.title = printTitle;
+  redrawForPrint();
+}
+async function printReport(kind) {
+  preparePrint(kind);
+  // Palaukiame žemėlapio fono (ne ilgiau kaip 4 s).
+  await Promise.all(visibleMaps().map(m => new Promise(res => {
+    if (!m.tiles.isLoading || !m.tiles.isLoading()) return setTimeout(res, 300);
+    m.tiles.once('load', res); setTimeout(res, 4000);
+  })));
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  window.print();
+  // Kai kurios naršyklės (pvz. telefone) grąžina valdymą iškart – atstatome vaizdą tik po spausdinimo lango.
+  window.addEventListener('afterprint', () => setTimeout(restoreAfterPrint, 500), { once: true });
+  setTimeout(() => { if (printPrepared && !matchMedia('print').matches) restoreAfterPrint(); }, 60e3);
+}
+document.getElementById('jg-pdf').addEventListener('click', () => printReport('gamta'));
+document.getElementById('pk-pdf').addEventListener('click', () => printReport('patikra'));
+// Spausdinant per naršyklės meniu (be mygtuko) – bent jau antraštė ir šviesios spalvos.
+window.addEventListener('beforeprint', () => {
+  if (printPrepared) return;
+  const kind = !document.getElementById('view-patikra').hidden ? 'patikra' : !document.getElementById('view-gamta').hidden ? 'gamta' : null;
+  preparePrint(kind);
+  window.addEventListener('afterprint', () => setTimeout(restoreAfterPrint, 500), { once: true });
+});
 
 /* ================= SKIRTUKAI ================= */
 const TABS = { prognoze: null, stotys: loadStations, upes: loadHydro, gamta: loadJegos, patikra: loadPatikra };
