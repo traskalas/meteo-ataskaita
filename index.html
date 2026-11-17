@@ -190,7 +190,6 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line)
 footer a { color: var(--accent); }
 /* Spausdinimas / PDF */
 .print-head { display: none; }
-.btn.pdf::before { content: "⎙ "; }
 /* Ruošiant spausdinimui puslapis laikinai siaurinamas iki A4 pločio, kad grafikai ir žemėlapis būtų perpiešti tinkamo dydžio. */
 html.printing .wrap { width: 700px; max-width: none; }
 html.printing, :root.printing {
@@ -421,7 +420,7 @@ html.printing .map-box .leaflet-tile-pane { filter: none; }
         <h2 id="jg-title">Rodikliai pagal stotis</h2>
         <div class="row-actions">
           <button class="btn ghost" type="button" id="jg-csv">Atsisiųsti CSV</button>
-          <button class="btn pdf" type="button" id="jg-pdf">Spausdinti / PDF</button>
+          <button class="btn pdf" type="button" id="jg-pdf">Atsisiųsti PDF</button>
         </div>
       </header>
       <span class="note">Raudona – kriterijus viršytas, oranžinė – pasiekta ne mažiau kaip 80 % ribos.<span class="no-print"> Paspauskite eilutę, kad pamatytumėte valandinius grafikus.</span></span>
@@ -539,7 +538,7 @@ html.printing .map-box .leaflet-tile-pane { filter: none; }
     <div class="panel" id="pk-list-panel" hidden>
       <header>
         <h2>Dienos, kai viršyti kriterijai</h2>
-        <div class="row-actions"><button class="btn ghost" type="button" id="pk-csv">Atsisiųsti CSV</button><button class="btn pdf" type="button" id="pk-pdf">Spausdinti / PDF</button></div>
+        <div class="row-actions"><button class="btn ghost" type="button" id="pk-csv">Atsisiųsti CSV</button><button class="btn pdf" type="button" id="pk-pdf">Atsisiųsti PDF</button></div>
       </header>
       <div class="filters" id="pk-filters">
         <label><input type="checkbox" value="wind" checked>Audra</label>
@@ -737,7 +736,7 @@ function stationMap(id, center, label, chosen, background) {
   if (!m) {
     const map = L.map(id, { scrollWheelZoom: false, zoomSnap: .25 });
     const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+      maxZoom: 18, crossOrigin: 'anonymous', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
     }).addTo(map);
     m = maps[id] = { map, tiles, layer: L.layerGroup().addTo(map) };
   }
@@ -1486,6 +1485,7 @@ function loadJegos() {
 }
 
 /* ================= GAMTOS JĖGOS – PATIKRA (1, 3, 6 arba 12 mėn.) ================= */
+const MONTHS = ['Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis', 'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'];
 const EV = { wind: 'Audra', rain: 'Liūtis', snow: 'Sniego slėgis', hail: 'Kruša' };
 const PERIODS = [1, 3, 6, 12];
 let pkRun = 0, pkInit = false, pkDays = [], pkMeta = null;
@@ -1663,7 +1663,7 @@ function renderPatikra() {
     if (!monthsList.length || monthsList[monthsList.length - 1].key !== key) monthsList.push({ key, days: [] });
     monthsList[monthsList.length - 1].days.push(d);
   }
-  const MONTHS = ['Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis', 'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'];
+  pkMeta.byDate = byDate; pkMeta.monthsList = monthsList;
   document.getElementById('pk-cal').innerHTML = monthsList.map(m => {
     const first = new Date(m.days[0] + 'T12:00:00Z').getUTCDay(); // 0 = sekmadienis
     const pad = (first + 6) % 7;
@@ -1803,40 +1803,44 @@ function loadPatikra() {
 const dl = rows => '<dl>' + rows.filter(r => r && r[1]).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl>';
 const nowText = () => new Date().toLocaleString('lt-LT', { timeZone: CONFIG.tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 const stationText = s => `${s.name} (${s.src === 'road' ? 'kelių st., ' : ''}${num(s.dist, 1)} km${s.brg != null ? ' ' + compassBrg(s.brg) : ''})`;
-function fillPrintHead(kind) {
+const CRIT_TEXT = 'ERGO Gyventojų turto draudimo taisyklės (nuo 2022-07-15), II d. 4.4 p.: audra – vėjo gūsiai > 18 m/s; liūtis – ≥ 15 mm per 6 val.; sniego slėgis – ≥ 20 cm per 12 val.; kruša';
+function headInfo(kind) {
   if (kind === 'patikra' && pkMeta) {
     const { place, coords, from, to, months, list, pickMode } = pkMeta;
-    document.getElementById('pk-print-head').innerHTML = `<h1>Gamtos jėgų patikra</h1>` + dl([
+    return { title: 'Gamtos jėgų patikra', rows: [
       ['Draudimo vieta', place ? place.name : `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`],
       ['Koordinatės', `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`],
       ['Laikotarpis', `${from} – ${to} (${menLabel(months)})`],
       ['LHMT stotys', list.filter(s => s.src !== 'road').map(stationText).join(', ')],
       ['Kelių stotys', list.filter(s => s.src === 'road').map(stationText).join(', ')],
       ['Stočių parinkimas', pickMode === 'spread' ? 'iš skirtingų pusių' : 'artimiausios'],
-      ['Kriterijai', 'ERGO Gyventojų turto draudimo taisyklės (nuo 2022-07-15), II d. 4.4 p.: audra – vėjo gūsiai > 18 m/s; liūtis – ≥ 15 mm per 6 val.; sniego slėgis – ≥ 20 cm per 12 val.; kruša'],
+      ['Kriterijai', CRIT_TEXT],
       ['Parengta', nowText()],
       ['Nuoroda', location.href]
-    ]);
-    return `Gamtos-jegu-patikra_${place ? place.code : 'koord'}_${from}_${to}`;
+    ].filter(r => r && r[1]), file: `Gamtos-jegu-patikra_${place ? place.code : 'koord'}_${from}_${to}` };
   }
   if (kind === 'gamta' && jgMeta.from) {
     const { from, to, place } = jgMeta;
     const pick = document.getElementById('jg-pick').value;
-    document.getElementById('jg-print-head').innerHTML = `<h1>Gamtos jėgų vertinimas</h1>` + dl([
+    return { title: 'Gamtos jėgų vertinimas', rows: [
       ['Laikotarpis', from + (to !== from ? ' – ' + to : '')],
       ['Draudimo vieta', place ? place.name : 'nenurodyta (vertinamos visos LHMT stotys)'],
       place && place.coordinates ? ['Koordinatės', `${place.coordinates.latitude.toFixed(4)}, ${place.coordinates.longitude.toFixed(4)}`] : null,
       place ? ['LHMT stotys', jgRows.filter(s => s.src !== 'road').map(stationText).join(', ')] : null,
       place ? ['Kelių stotys', jgRows.filter(s => s.src === 'road').map(stationText).join(', ')] : null,
       place ? ['Stočių parinkimas', pick === 'spread' ? 'iš skirtingų pusių' : 'artimiausios'] : null,
-      ['Kriterijai', 'ERGO Gyventojų turto draudimo taisyklės (nuo 2022-07-15), II d. 4.4 p.: audra – vėjo gūsiai > 18 m/s; liūtis – ≥ 15 mm per 6 val.; sniego slėgis – ≥ 20 cm per 12 val.; kruša'],
+      ['Kriterijai', CRIT_TEXT],
       ['Valandiniai grafikai', document.getElementById('jg-detail').hidden ? '' : document.getElementById('jg-dtitle').textContent],
       ['Parengta', nowText()],
       ['Nuoroda', location.href]
-    ]);
-    return `Gamtos-jegos_${from}_${to}${place ? '_' + (place.code || 'koord') : ''}`;
+    ].filter(r => r && r[1]), file: `Gamtos-jegos_${from}_${to}${place ? '_' + (place.code || 'koord') : ''}` };
   }
   return null;
+}
+function fillPrintHead(kind) {
+  const h = headInfo(kind); if (!h) return null;
+  document.getElementById(kind === 'patikra' ? 'pk-print-head' : 'jg-print-head').innerHTML = `<h1>${esc(h.title)}</h1>` + dl(h.rows);
+  return h.file;
 }
 let printPrepared = false, printTitle = null;
 function redrawForPrint() {
@@ -1877,8 +1881,242 @@ async function printReport(kind) {
   window.addEventListener('afterprint', () => setTimeout(restoreAfterPrint, 500), { once: true });
   setTimeout(() => { if (printPrepared && !matchMedia('print').matches) restoreAfterPrint(); }, 60e3);
 }
-document.getElementById('jg-pdf').addEventListener('click', () => printReport('gamta'));
-document.getElementById('pk-pdf').addEventListener('click', () => printReport('patikra'));
+/* ---------- PDF failas (pdfmake) ---------- */
+// Mygtukas „Atsisiųsti PDF“ sugeneruoja PDF naršyklėje ir iškart pasiūlo jį išsaugoti.
+// pdfmake (su Roboto šriftu, turinčiu lietuviškas raides) įkeliamas tik paspaudus mygtuką.
+const PDFMAKE = ['https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/', 'https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/'];
+const PDF_C = { ink: '#0f1f29', muted: '#566a77', line: '#d5e0e6', soft: '#eef3f5', accent: '#0a7584', warm: '#c9512a', bad: '#b8322a', warn: '#b26b00', good: '#1f8a4c',
+  wind: '#0a7584', rain: '#2d6bd1', snow: '#7a4fc4', hail: '#c9512a', near: '#e3c48a', cell: '#d5e0e6' };
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const el = document.createElement('script');
+    el.src = src; el.onload = res; el.onerror = () => rej(new Error('Nepavyko įkelti ' + src));
+    document.head.appendChild(el);
+  });
+}
+// Bandoma iš cdnjs, nepavykus – iš jsDelivr.
+async function loadFirst(file) {
+  let err;
+  for (const base of PDFMAKE) { try { return await loadScript(base + file); } catch (e) { err = e; } }
+  throw err;
+}
+let pdfLib = null;
+function loadPdfMake() {
+  return pdfLib ||= (async () => {
+    if (!window.pdfMake) await loadFirst('pdfmake.min.js');
+    if (!pdfMake.vfs || !pdfMake.vfs['Roboto-Regular.ttf']) await loadFirst('vfs_fonts.js');
+    return window.pdfMake;
+  })().catch(e => { pdfLib = null; throw e; });
+}
+// Žemėlapis → paveikslėlis: fono plytelės iš DOM ir stotys, linijos, užrašai nupiešiami iš naujo.
+function mapImage(id) {
+  const m = maps[id];
+  if (!m || !m.last || m.map.getContainer().offsetParent === null) return null;
+  const [center, label, chosen, background] = m.last;
+  const box = m.map.getContainer(), r0 = box.getBoundingClientRect(), W = r0.width, Hh = r0.height, k = 2;
+  const cv = document.createElement('canvas'); cv.width = W * k; cv.height = Hh * k;
+  const g = cv.getContext('2d'); g.scale(k, k);
+  g.fillStyle = PDF_C.soft; g.fillRect(0, 0, W, Hh);
+  let tiles = 0;
+  for (const img of box.querySelectorAll('.leaflet-tile-pane img.leaflet-tile-loaded')) {
+    const r = img.getBoundingClientRect();
+    try { g.drawImage(img, r.left - r0.left, r.top - r0.top, r.width, r.height); tiles++; } catch (e) {}
+  }
+  const pt = c => m.map.latLngToContainerPoint([c.latitude, c.longitude]);
+  const color = s => s.src === 'road' ? PDF_C.warm : PDF_C.accent;
+  const dot = (p, rad, fill, stroke, lw, alpha = 1) => {
+    g.globalAlpha = alpha; g.beginPath(); g.arc(p.x, p.y, rad, 0, Math.PI * 2); g.fillStyle = fill; g.fill();
+    if (stroke) { g.lineWidth = lw; g.strokeStyle = stroke; g.stroke(); } g.globalAlpha = 1;
+  };
+  const tag = (p, text, bg, fg, dx, dy, align) => {
+    g.font = '600 11px "JetBrains Mono", Menlo, monospace';
+    const w = g.measureText(text).width + 10, h = 17;
+    const x = align === 'center' ? p.x - w / 2 : p.x + dx, y = p.y + dy - h / 2;
+    g.fillStyle = bg; g.strokeStyle = bg === '#ffffff' ? PDF_C.line : bg; g.lineWidth = 1;
+    g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, 3) : g.rect(x, y, w, h); g.fill(); g.stroke();
+    g.fillStyle = fg; g.textBaseline = 'middle'; g.fillText(text, x + 5, y + h / 2 + .5);
+  };
+  const taken = new Set(chosen.map(s => s.code));
+  for (const s of background) if (s.coordinates && !taken.has(s.code)) dot(pt(s.coordinates), 3, color(s), PDF_C.muted, 1, .45);
+  const c = pt(center);
+  for (const s of chosen) if (s.coordinates) {
+    const p = pt(s.coordinates);
+    g.setLineDash([5, 5]); g.lineWidth = 1.5; g.strokeStyle = color(s);
+    g.beginPath(); g.moveTo(c.x, c.y); g.lineTo(p.x, p.y); g.stroke(); g.setLineDash([]);
+  }
+  for (const s of chosen) if (s.coordinates) {
+    const p = pt(s.coordinates);
+    dot(p, 7, color(s), '#ffffff', 2);
+    tag(p, `${s.name} · ${num(haversine(center, s.coordinates), 1)} km ${compassBrg(bearing(center, s.coordinates))}`, '#ffffff', PDF_C.ink, 10, 0);
+  }
+  dot(c, 9, PDF_C.bad, '#ffffff', 3);
+  tag({ x: c.x, y: c.y }, label, PDF_C.bad, '#ffffff', 0, -22, 'center');
+  g.font = '10px Arial, sans-serif'; g.fillStyle = PDF_C.muted; g.textBaseline = 'alphabetic';
+  const attr = '© OpenStreetMap'; g.fillText(attr, W - g.measureText(attr).width - 6, Hh - 6);
+  try { return { data: cv.toDataURL('image/jpeg', .9), ratio: Hh / W, tiles }; }
+  catch (e) { return null; }
+}
+// Patikros kalendorius → paveikslėlis.
+function calendarImage() {
+  if (!pkMeta || !pkMeta.monthsList) return null;
+  const { monthsList, byDate } = pkMeta;
+  const cell = 13, gap = 2, mw = 7 * (cell + gap), cols = Math.min(6, monthsList.length), rowH = 6 * (cell + gap) + 20, k = 2;
+  const W = cols * (mw + 14), Hh = Math.ceil(monthsList.length / cols) * (rowH + 8);
+  const cv = document.createElement('canvas'); cv.width = W * k; cv.height = Hh * k;
+  const g = cv.getContext('2d'); g.scale(k, k); g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, Hh);
+  monthsList.forEach((m, i) => {
+    const x0 = (i % cols) * (mw + 14), y0 = Math.floor(i / cols) * (rowH + 8);
+    const [y, mo] = m.key.split('-').map(Number);
+    g.font = '600 10px Arial, sans-serif'; g.fillStyle = PDF_C.muted; g.textBaseline = 'top';
+    g.fillText(`${MONTHS[mo - 1]} ${y}`.toUpperCase(), x0, y0);
+    const pad = (new Date(m.days[0] + 'T12:00:00Z').getUTCDay() + 6) % 7;
+    m.days.forEach((d, j) => {
+      const n = pad + j, x = x0 + (n % 7) * (cell + gap), yy = y0 + 16 + Math.floor(n / 7) * (cell + gap);
+      const e = byDate.get(d);
+      if (!e) return;
+      if (!e.hasData) { g.strokeStyle = PDF_C.line; g.setLineDash([2, 2]); g.strokeRect(x + .5, yy + .5, cell - 1, cell - 1); g.setLineDash([]); return; }
+      g.fillStyle = e.ev.size > 1 ? PDF_C.bad : e.ev.size ? PDF_C[[...e.ev][0]] : e.near.size ? PDF_C.near : PDF_C.cell;
+      g.fillRect(x, yy, cell, cell);
+    });
+  });
+  return { data: cv.toDataURL('image/png'), ratio: Hh / W, width: W };
+}
+const chartImage = id => { const c = charts[id]; try { return c ? c.toBase64Image('image/png', 1) : null; } catch (e) { return null; } };
+// Kortelės (santrauka) → lentelė.
+function cardsTable(containerId) {
+  const cards = [...document.querySelectorAll('#' + containerId + ' .stat')];
+  if (!cards.length) return null;
+  const col = el => el.classList.contains('hit') ? PDF_C.bad : el.classList.contains('near') ? PDF_C.warn : el.classList.contains('ok') ? PDF_C.good : PDF_C.muted;
+  return {
+    table: { widths: cards.map(() => '*'), body: [cards.map(el => ({
+      stack: [
+        { text: el.querySelector('.k')?.textContent.trim().toUpperCase() || '', fontSize: 7, color: PDF_C.muted, bold: true },
+        { text: el.querySelector('.v')?.textContent.trim() || '', fontSize: 12, bold: true, color: col(el), margin: [0, 2, 0, 2] },
+        { text: el.querySelector('.w')?.textContent.trim() || '', fontSize: 7.5, color: PDF_C.ink },
+        { text: el.querySelector('.rule')?.textContent.trim() || '', fontSize: 7, color: PDF_C.muted, margin: [0, 2, 0, 0] }
+      ], margin: [4, 4, 4, 4] }))] },
+    layout: { hLineColor: () => PDF_C.line, vLineColor: (i, node) => PDF_C.line, hLineWidth: () => .5, vLineWidth: () => .5 },
+    margin: [0, 0, 0, 10]
+  };
+}
+const thCell = t => ({ text: t, bold: true, fontSize: 7, color: PDF_C.muted, fillColor: PDF_C.soft });
+const tableLayout = { hLineColor: () => PDF_C.line, vLineColor: () => PDF_C.line, hLineWidth: (i, node) => i === 0 || i === node.table.body.length ? .5 : .3, vLineWidth: () => 0, paddingTop: () => 3, paddingBottom: () => 3, paddingLeft: () => 4, paddingRight: () => 4 };
+const legend = items => ({ table: { widths: items.flatMap(() => [7, 'auto']), body: [items.flatMap(([c, t]) => [
+  { canvas: [{ type: 'rect', x: 0, y: 1.5, w: 7, h: 7, r: 1.5, color: c }], margin: [0, 0, 0, 0] }, { text: t, color: PDF_C.muted, margin: [0, 0, 8, 0] }])] },
+  layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 2, paddingRight: () => 2, paddingTop: () => 0, paddingBottom: () => 0 }, fontSize: 7.5, margin: [0, 4, 0, 8] });
+function headBlock(h) {
+  return [
+    { text: h.title, fontSize: 17, bold: true, margin: [0, 0, 0, 6] },
+    { table: { widths: [90, '*'], body: h.rows.map(([k, v]) => [{ text: k, color: PDF_C.muted }, k === 'Nuoroda' ? { text: v, link: v, color: PDF_C.accent, fontSize: 7.5 } : { text: v }]) },
+      layout: 'noBorders', fontSize: 8.5, margin: [0, 0, 0, 6] },
+    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 1.2, lineColor: PDF_C.ink }], margin: [0, 0, 0, 10] }
+  ];
+}
+const h2 = t => ({ text: t, fontSize: 11.5, bold: true, margin: [0, 8, 0, 5] });
+const statusNote = id => { const el = document.getElementById(id); return el && !el.hidden && !el.classList.contains('error') && el.textContent.trim() ? { text: el.textContent.trim(), fontSize: 7.5, color: PDF_C.muted, margin: [0, 0, 0, 8] } : null; };
+const howNotes = () => [...document.querySelectorAll('#view-gamta .disclaimer:not(.no-print) p')].map(p => ({ text: p.textContent.trim().replace(/\s+/g, ' '), fontSize: 7.5, color: PDF_C.muted, margin: [0, 0, 0, 4] }));
+function mapBlock(id, title) {
+  const img = mapImage(id);
+  if (!img) return [];
+  return [h2(title), { image: img.data, width: 523, height: Math.round(523 * img.ratio) },
+    legend([[PDF_C.bad, 'Draudimo vieta'], [PDF_C.accent, 'LHMT stotis'], [PDF_C.warm, 'Kelių stotis'], ['#9aa8b1', 'Kitos stotys']])];
+}
+function patikraDoc() {
+  const h = headInfo('patikra');
+  const content = [...headBlock(h), cardsTable('pk-sum'), statusNote('pk-status'), ...mapBlock('pk-map', 'Stotys žemėlapyje')];
+  const cal = calendarImage();
+  if (cal) content.push(h2(document.getElementById('pk-cal-title').textContent), { text: document.getElementById('pk-stations').textContent, fontSize: 7.5, color: PDF_C.muted, margin: [0, 0, 0, 5] },
+    { image: cal.data, width: Math.min(523, cal.width), unbreakable: true },
+    legend([[PDF_C.wind, 'Audra'], [PDF_C.rain, 'Liūtis'], [PDF_C.snow, 'Sniego slėgis'], [PDF_C.hail, 'Kruša'], [PDF_C.bad, 'Keli įvykiai'], [PDF_C.near, 'Arti ribos (≥80 %)'], [PDF_C.cell, 'Be įvykių']]));
+  const rows = visiblePkRows();
+  content.push(h2('Dienos, kai viršyti kriterijai'));
+  if (!rows.length) content.push({ text: 'Per šį laikotarpį pasirinktų kriterijų viršijimų nerasta.', color: PDF_C.muted });
+  else content.push({
+    table: { headerRows: 1, dontBreakRows: true, widths: [52, 92, 70, '*', 52], body: [
+      ['Data', 'Stotis', 'Įvykis', 'Rodikliai', 'Temp. min / max, °C'].map(thCell),
+      ...rows.map(d => [
+        { text: [d.date + '\n', { text: dayName(new Date(d.date + 'T12:00:00Z')), color: PDF_C.muted, fontSize: 7 }] },
+        { text: [d.station + '\n', { text: `${srcLabel(d)} · ${num(d.dist, 0)} km`, color: PDF_C.muted, fontSize: 7 }] },
+        { text: [...d.ev.map(k => ({ text: EV[k] + '\n', color: PDF_C[k], bold: true })), ...d.near.map(k => ({ text: EV[k] + ' – arti\n', color: PDF_C.warn }))] },
+        { text: dayMetrics(d).join('\n') },
+        { text: `${num(d.tMin, 1)} / ${num(d.tMax, 1)}`, alignment: 'right' }
+      ])
+    ] }, layout: tableLayout, fontSize: 8
+  });
+  content.push(h2('Kaip skaičiuojama'), ...howNotes());
+  return { content: content.filter(Boolean), file: h.file };
+}
+function gamtaDoc() {
+  const h = headInfo('gamta');
+  const content = [...headBlock(h), cardsTable('jg-crit'), statusNote('jg-status'), ...mapBlock('jg-map', 'Stotys žemėlapyje')];
+  const rows = [...jgRows].sort(rowSorter);
+  const t = ms => ms ? '\n' + fmtDateTime(new Date(ms)) : '';
+  const cell = (v, ms, lim, strict, dp = 1) => {
+    const l = lim == null ? '' : level(v, lim, strict);
+    return { text: [{ text: num(v, dp), bold: l === 'hit', color: l === 'hit' ? PDF_C.bad : l === 'near' ? PDF_C.warn : PDF_C.ink }, { text: t(ms), color: l === 'hit' ? PDF_C.bad : PDF_C.muted, fontSize: 6 }], alignment: 'right' };
+  };
+  content.push(h2(document.getElementById('jg-title').textContent), {
+    table: { headerRows: 1, dontBreakRows: true, widths: [70, 34, '*', '*', '*', 34, '*', 30, 46, 34, 30], body: [
+      ['Stotis', 'Atstumas', 'Gūsiai max, m/s', 'Vid. vėjas max, m/s', 'Krituliai 6 h max, mm', 'Krit. iš viso, mm', 'Sniego prieaugis 12 h, cm', 'Sniego danga, cm', 'Temp. min / max, °C', 'Kruša', 'Duomenys'].map(thCell),
+      ...rows.map(r => [
+        { text: [r.name + '\n', { text: srcLabel(r), color: PDF_C.muted, fontSize: 6 }] },
+        { text: r.dist != null ? num(r.dist, 0) + ' km' + (r.brg != null ? ' ' + compassBrg(r.brg) : '') : '—', alignment: 'right' },
+        cell(r.gust, r.gustT, CRIT.gust, true), cell(r.wind, r.windT, null),
+        cell(r.rain6, r.rain6 ? r.rain6T : null, CRIT.rain6h, false),
+        { text: num(r.rainTotal, 1), alignment: 'right' },
+        cell(r.snow12, r.snow12 ? r.snow12T : null, CRIT.snow12h, false, 0),
+        { text: num(r.snowMax, 0), alignment: 'right' },
+        { text: `${num(r.tMin, 1)} / ${num(r.tMax, 1)}`, alignment: 'right' },
+        r.hail ? { text: 'Taip' + t(r.hailT), color: PDF_C.bad, bold: true } : '—',
+        { text: `${r.coverage}/${r.expected} h`, alignment: 'right' }
+      ])
+    ] }, layout: tableLayout, fontSize: 7
+  }, { text: 'Raudona – kriterijus viršytas, oranžinė – pasiekta ne mažiau kaip 80 % ribos.', fontSize: 7, color: PDF_C.muted, margin: [0, 3, 0, 0] });
+  if (!document.getElementById('jg-detail').hidden) {
+    const imgs = ['jg-c-wind', 'jg-c-rain', 'jg-c-snow'].map(chartImage).filter(Boolean);
+    if (imgs.length) content.push({ stack: [h2('Valandiniai grafikai: ' + document.getElementById('jg-dtitle').textContent),
+      { text: document.getElementById('jg-drange').textContent, fontSize: 7.5, color: PDF_C.muted, margin: [0, 0, 0, 4] },
+      ...imgs.map(src => ({ image: src, width: 523, margin: [0, 0, 0, 6] }))], pageBreak: 'before' });
+  }
+  content.push(h2('Kaip skaičiuojama'), ...howNotes());
+  return { content: content.filter(Boolean), file: h.file };
+}
+async function downloadPdf(kind, btn) {
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Ruošiamas PDF…';
+  try {
+    const lib = loadPdfMake();
+    preparePrint(kind);
+    // Palaukiame žemėlapio fono (ne ilgiau kaip 4 s) ir kol grafikai bus perpiešti.
+    await Promise.all(visibleMaps().map(m => new Promise(res => {
+      if (!m.tiles.isLoading || !m.tiles.isLoading()) return setTimeout(res, 300);
+      m.tiles.once('load', () => setTimeout(res, 200)); setTimeout(res, 4000);
+    })));
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const doc = kind === 'patikra' ? patikraDoc() : gamtaDoc();
+    restoreAfterPrint();
+    const pm = await lib;
+    pm.createPdf({
+      pageSize: 'A4', pageMargins: [36, 36, 36, 40],
+      info: { title: doc.file, subject: 'Gamtos jėgų vertinimas pagal LHMT ir Via Lietuva duomenis' },
+      defaultStyle: { font: 'Roboto', fontSize: 8.5, color: PDF_C.ink, lineHeight: 1.15 },
+      footer: (cur, total) => ({ columns: [
+        { text: 'Šaltiniai: LHMT (api.meteo.lt); AB „Via Lietuva“, eismoinfo.lt. Laikas – Lietuvos. Orientacinis vertinimas, ne draudiko sprendimas.', fontSize: 6.5, color: PDF_C.muted },
+        { text: `${cur} / ${total}`, alignment: 'right', fontSize: 7, color: PDF_C.muted, width: 40 }
+      ], margin: [36, 12, 36, 0] }),
+      content: doc.content
+    }).download(doc.file + '.pdf');
+  } catch (e) {
+    console.error(e);
+    restoreAfterPrint();
+    // Jei PDF biblioteka nepasiekiama – naršyklės spausdinimas (ten galima pasirinkti „Išsaugoti kaip PDF“).
+    printReport(kind);
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+document.getElementById('jg-pdf').addEventListener('click', e => downloadPdf('gamta', e.currentTarget));
+document.getElementById('pk-pdf').addEventListener('click', e => downloadPdf('patikra', e.currentTarget));
 // Spausdinant per naršyklės meniu (be mygtuko) – bent jau antraštė ir šviesios spalvos.
 window.addEventListener('beforeprint', () => {
   if (printPrepared) return;
