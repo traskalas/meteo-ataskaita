@@ -449,6 +449,7 @@ html.printing .map-box .leaflet-tile-pane { filter: none; }
       <div class="chart-box sm"><canvas id="jg-c-wind" aria-label="Vėjo greitis ir gūsiai"></canvas></div>
       <div class="chart-box sm"><canvas id="jg-c-rain" aria-label="Krituliai"></canvas></div>
       <div class="chart-box sm"><canvas id="jg-c-snow" aria-label="Sniego danga ir temperatūra"></canvas></div>
+      <p class="note" id="jg-snow-note" hidden></p>
     </div>
     <div class="disclaimer">
       <p><b>Kaip skaičiuojama.</b> Gūsiai – didžiausias vėjo gūsis per valandą; audra vertinama pagal gūsius, vidutinis vėjas rodomas tik informacijai. Krituliai 6 h – didžiausia slenkanti 6 valandų valandinių kritulių suma. Sniego prieaugis 12 h – didžiausias sniego dangos storio padidėjimas per 12 valandų (sniegą matuoja ne visos stotys ir ne kas valandą). Kruša – kai stotis užfiksavo krušą kaip orų reiškinį; ji dažnai būna labai lokali ir stotyje gali būti neužfiksuota.</p>
@@ -656,7 +657,7 @@ function roadJobs(stationIndex, s, fromMs, toMs) {
   }
   return jobs;
 }
-const srcLabel = s => s.src === 'road' ? 'Kelių stotis' + (s.road ? ' · ' + s.road : '') : 'LHMT';
+const srcLabel = s => s.src === 'road' ? 'Kelių stotis' + (s.road ? ' · ' + s.road : '') : s.snowOnly ? 'LHMT · tik sniegas' : 'LHMT';
 
 async function pool(items, limit, fn, onProgress) {
   const out = new Array(items.length); let i = 0, done = 0;
@@ -754,7 +755,7 @@ function stationMap(id, center, label, chosen, background) {
     if (!s.coordinates) continue;
     L.polyline([c, ll(s)], { color: color(s), weight: 1.5, dashArray: '5 5', opacity: .8 }).addTo(m.layer);
     L.circleMarker(ll(s), { radius: 7, color: '#fff', weight: 2, fillColor: color(s), fillOpacity: 1 })
-      .bindTooltip(`${esc(s.name)} · ${num(haversine(center, s.coordinates), 1)} km ${compassBrg(bearing(center, s.coordinates))}`, { permanent: chosen.length <= 10, direction: 'right', offset: [8, 0], className: 'mt' })
+      .bindTooltip(`${esc(s.name)}${s.snowOnly ? ' (sniegas)' : ''} · ${num(haversine(center, s.coordinates), 1)} km ${compassBrg(bearing(center, s.coordinates))}`, { permanent: chosen.length <= 10, direction: 'right', offset: [8, 0], className: 'mt' })
       .addTo(m.layer);
   }
   L.circleMarker(c, { radius: 9, color: '#fff', weight: 3, fillColor: css('--bad'), fillOpacity: 1 })
@@ -1176,6 +1177,38 @@ function pickStations(arr, center, n, mode) {
   return { list, filled };
 }
 const compassBrg = deg => COMPASS[Math.round(deg / 45) % 8];
+// Ar LHMT stotis matuoja sniego dangą: tikrinami naujausi stebėjimai ir, jei ten sniego reikšmių nėra,
+// praėjusios žiemos sausio 15 d. (kai sniego nėra, stotys sniego dangos dažnai nepateikia).
+const snowProbe = new Map();
+function measuresSnow(code) {
+  if (snowProbe.has(code)) return snowProbe.get(code);
+  const has = r => (r?.observations || []).some(o => isNum(o.snowDepth));
+  const now = new Date(), y = now.getUTCMonth() >= 1 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+  const p = (async () => {
+    const base = '/stations/' + encodeURIComponent(code) + '/observations/';
+    if (has(await paced(base + 'latest').catch(() => null))) return true;
+    return has(await paced(base + y + '-01-15').catch(() => null));
+  })();
+  snowProbe.set(code, p);
+  return p;
+}
+const SNOW_MAX_KM = 80;
+// Jei nė viena parinkta LHMT stotis sniego nematuoja – randama artimiausia, kuri matuoja (iki 80 km).
+async function findSnowStation(list, center) {
+  const lhmt = list.filter(s => s.src !== 'road');
+  for (const s of lhmt) if (await measuresSnow(s.code)) return null;
+  const taken = new Set(list.map(s => s.code));
+  const cands = jgStations.filter(s => s.coordinates && !taken.has(s.code))
+    .map(s => ({ ...s, src: 'lhmt', dist: haversine(center, s.coordinates), brg: bearing(center, s.coordinates) }))
+    .filter(s => s.dist <= SNOW_MAX_KM).sort((a, b) => a.dist - b.dist).slice(0, 6);
+  for (const s of cands) if (await measuresSnow(s.code)) return { ...s, snowOnly: true };
+  return null;
+}
+// „Tik sniego“ stoties kiti rodikliai nevertinami (ji parinkta tik sniego slėgiui).
+function snowOnlyResult(r) {
+  return { ...r, gust: null, gustT: null, wind: null, windT: null, rain6: null, rain6T: null, rainTotal: null, hail: 0, hailT: null };
+}
+const snowNoteText = s => `Sniego slėgis papildomai vertinamas pagal ${s.name} (${num(s.dist, 0)} km ${compassBrg(s.brg)}), nes parinktos LHMT stotys sniego dangos nematuoja. Šios stoties vėjas ir krituliai nevertinami.`;
 
 function analyse(obs, S, E) {
   const inR = obs.filter(o => o.ms >= S && o.ms < E);
@@ -1276,6 +1309,12 @@ async function runJegos(opts = {}) {
         list = list.concat(pick.list);
       } catch (e) { roadNote = 'Kelių stočių duomenų gauti nepavyko.'; }
     } else if (roadN && !place) roadNote = 'Kelių stotys įtraukiamos, kai nurodyta draudimo vieta.';
+    let snowNote = '';
+    if (place && place.coordinates && mode !== 'all') {
+      setStatus('jg-status', 'Tikrinama, ar stotys matuoja sniego dangą…');
+      const snowSt = await findSnowStation(list, place.coordinates).catch(() => null);
+      if (snowSt) { list.push(snowSt); snowNote = snowNoteText(snowSt); }
+    }
     // Jei atėjome iš patikros su konkrečia stotimi, ji visada įtraukiama.
     if (opts.focus && !list.some(s => s.code === opts.focus) && place && place.coordinates) {
       let f = jgStations.find(s => s.code === opts.focus);
@@ -1317,7 +1356,8 @@ async function runJegos(opts = {}) {
     if (failed === res.length) throw new Error('network');
     jgRows = list.map((s, si) => {
       const obs = [...per[si].values()].map(o => o.ms ? o : ({ ...o, ms: parseUtc(o.observationTimeUtc).getTime() })).sort((a, b) => a.ms - b.ms);
-      return { name: s.name, code: s.code, src: s.src, road: s.road, dist: s.dist, brg: s.brg, obs, ...analyse(obs, S, E) };
+      const a = analyse(obs, S, E);
+      return { name: s.name, code: s.code, src: s.src, road: s.road, dist: s.dist, brg: s.brg, snowOnly: s.snowOnly, obs, ...(s.snowOnly ? snowOnlyResult(a) : a) };
     });
     jgMeta = { from, to, S, E, place };
     if (place) { jgSortKey = 'dist'; jgSortDir = 1; }
@@ -1330,7 +1370,7 @@ async function runJegos(opts = {}) {
     const roadEmpty = jgRows.filter(r => r.src === 'road' && !r.coverage).length;
     setStatus('jg-status', [
       failed ? `Dalies duomenų gauti nepavyko (${failed} iš ${res.length} užklausų). Rodikliai gali būti neišsamūs.` : '',
-      roadNote,
+      roadNote, snowNote,
       roadEmpty ? `${roadEmpty} kelių stotys šiam laikotarpiui duomenų neturi: eismoinfo saugo tik kelias paskutines dienas, senesni duomenys yra tik archyve nuo jo įjungimo.` : ''
     ].filter(Boolean).join(' '));
     const focused = opts.focus && jgRows.find(r => r.code === opts.focus);
@@ -1436,6 +1476,12 @@ function showJegosDetail(code) {
     options: base('mm')
   }));
   const hasSnow = obs.some(o => isNum(o.snowDepth));
+  const snowNoteEl = document.getElementById('jg-snow-note');
+  const snowAlt = jgRows.find(x => x.snowOnly || (x.src !== 'road' && x.code !== r.code && x.obs.some(o => isNum(o.snowDepth))));
+  snowNoteEl.hidden = hasSnow;
+  snowNoteEl.textContent = hasSnow ? '' : (r.src === 'road' ? 'Kelių stotys sniego dangos nematuoja, todėl grafike rodoma tik temperatūra.'
+    : 'Ši stotis šiuo laikotarpiu sniego dangos duomenų nepateikė (sniego nebuvo arba stotis jo nematuoja), todėl grafike rodoma tik temperatūra.')
+    + (!hasSnow && snowAlt ? ` Sniego dangą rodo ${snowAlt.name} – paspauskite jos eilutę lentelėje.` : '');
   drawChart('jg-c-snow', () => ({
     type: 'line',
     data: { labels, datasets: [
@@ -1555,6 +1601,10 @@ async function runPatikra() {
         list = list.concat(roadPick.list);
       } catch (e) { roadNote = 'Kelių stočių duomenų gauti nepavyko.'; }
     }
+    let snowNote = '';
+    setStatus('pk-status', 'Tikrinama, ar stotys matuoja sniego dangą…');
+    const snowSt = await findSnowStation(list, coords).catch(() => null);
+    if (snowSt) { list.push(snowSt); snowNote = snowNoteText(snowSt); }
     const spreadNote = filledNets.length
       ? `Ne visose pusėse iki ${SPREAD_KM} km rasta ${filledNets.join(' ir ')} stočių, todėl dalis jų parinkta tiesiog kaip artimiausios.` : '';
     const u = new URL(location.href);
@@ -1603,9 +1653,9 @@ async function runPatikra() {
         while (p < obs.length && obs[p].ms < dS - 12 * H) p++;
         let q = p; while (q < obs.length && obs[q].ms < dE) q++;
         const slice = obs.slice(p, q);
-        const r = analyse(slice, dS, dE);
+        const r = s.snowOnly ? snowOnlyResult(analyse(slice, dS, dE)) : analyse(slice, dS, dE);
         const cls = classifyDay(r);
-        pkDays.push({ date: d, station: s.name, code: s.code, src: s.src, road: s.road, dist: s.dist, ...r, ...cls, hasData: r.coverage > 0 });
+        pkDays.push({ date: d, station: s.name, code: s.code, src: s.src, road: s.road, snowOnly: s.snowOnly, dist: s.dist, ...r, ...cls, hasData: r.coverage > 0 });
       }
     });
     pkMeta = { from, to, months, place, coords, list, pickMode, S, E };
@@ -1622,7 +1672,7 @@ async function runPatikra() {
     setStatus('pk-status', [
       failed ? `Dalies užklausų nepavyko (${failed} iš ${res.length}).` : '',
       noData.length ? `Stotis ${noData.join(', ')} šiuo laikotarpiu duomenų neteikė – rinkitės daugiau stočių.` : '',
-      roadNote, roadInfo, spreadNote
+      roadNote, roadInfo, spreadNote, snowNote
     ].filter(Boolean).join(' '));
   } catch (e) {
     console.error(e); setProgress(null);
@@ -1655,7 +1705,7 @@ function renderPatikra() {
 
   document.getElementById('pk-cal-title').textContent = `Įvykių kalendorius, ${from} – ${to} (${menLabel(months)})`;
   document.getElementById('pk-stations').textContent = (place ? place.name : `${num(coords.latitude, 4)}, ${num(coords.longitude, 4)}`) + ' · ' +
-    list.map(s => `${s.name} (${s.src === 'road' ? 'kelių st., ' : ''}${num(s.dist, 0)} km ${compassBrg(s.brg)}${s.src === 'road' && s.firstMs ? ', duomenys nuo ' + dayKey(new Date(s.firstMs)) : ''})`).join(', ');
+    list.map(s => `${s.name} (${s.src === 'road' ? 'kelių st., ' : s.snowOnly ? 'tik sniegas, ' : ''}${num(s.dist, 0)} km ${compassBrg(s.brg)}${s.src === 'road' && s.firstMs ? ', duomenys nuo ' + dayKey(new Date(s.firstMs)) : ''})`).join(', ');
   // Kalendorius
   const monthsList = [];
   for (let d = from.slice(0, 7) + '-01'; d <= to; d = addDays(d, 1)) {
@@ -1802,7 +1852,7 @@ function loadPatikra() {
 // palaukia, kol įsikels žemėlapio fonas, ir atidaro naršyklės spausdinimo langą („Išsaugoti kaip PDF“).
 const dl = rows => '<dl>' + rows.filter(r => r && r[1]).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl>';
 const nowText = () => new Date().toLocaleString('lt-LT', { timeZone: CONFIG.tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-const stationText = s => `${s.name} (${s.src === 'road' ? 'kelių st., ' : ''}${num(s.dist, 1)} km${s.brg != null ? ' ' + compassBrg(s.brg) : ''})`;
+const stationText = s => `${s.name} (${s.src === 'road' ? 'kelių st., ' : ''}${num(s.dist, 1)} km${s.brg != null ? ' ' + compassBrg(s.brg) : ''}${s.snowOnly ? ', tik sniegas' : ''})`;
 const CRIT_TEXT = 'ERGO Gyventojų turto draudimo taisyklės (nuo 2022-07-15), II d. 4.4 p.: audra – vėjo gūsiai > 18 m/s; liūtis – ≥ 15 mm per 6 val.; sniego slėgis – ≥ 20 cm per 12 val.; kruša';
 function headInfo(kind) {
   if (kind === 'patikra' && pkMeta) {
@@ -1947,7 +1997,7 @@ function mapImage(id) {
   for (const s of chosen) if (s.coordinates) {
     const p = pt(s.coordinates);
     dot(p, 7, color(s), '#ffffff', 2);
-    tag(p, `${s.name} · ${num(haversine(center, s.coordinates), 1)} km ${compassBrg(bearing(center, s.coordinates))}`, '#ffffff', PDF_C.ink, 10, 0);
+    tag(p, `${s.name}${s.snowOnly ? ' (sniegas)' : ''} · ${num(haversine(center, s.coordinates), 1)} km ${compassBrg(bearing(center, s.coordinates))}`, '#ffffff', PDF_C.ink, 10, 0);
   }
   dot(c, 9, PDF_C.bad, '#ffffff', 3);
   tag({ x: c.x, y: c.y }, label, PDF_C.bad, '#ffffff', 0, -22, 'center');
