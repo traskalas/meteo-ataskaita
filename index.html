@@ -373,6 +373,7 @@ html.printing .map-box .leaflet-tile-pane { filter: none; }
       <div class="field" style="flex:0 1 200px">
         <label for="jg-mode">LHMT stotys</label>
         <select id="jg-mode">
+          <option value="1">Artimiausia</option>
           <option value="2">2 artimiausios</option>
           <option value="3" selected>3 artimiausios</option>
           <option value="4">4 artimiausios</option>
@@ -382,6 +383,7 @@ html.printing .map-box .leaflet-tile-pane { filter: none; }
       <div class="field" style="flex:0 1 200px">
         <label for="jg-road">Kelių stotys</label>
         <select id="jg-road">
+          <option value="1">Artimiausia</option>
           <option value="2">2 artimiausios</option>
           <option value="3" selected>3 artimiausios</option>
           <option value="4">4 artimiausios</option>
@@ -1323,8 +1325,14 @@ async function runJegos(opts = {}) {
       if (f && f.coordinates) list.push({ ...f, dist: haversine(place.coordinates, f.coordinates), brg: bearing(place.coordinates, f.coordinates) });
     }
     if (filledNets.length) roadNote += (roadNote ? ' ' : '') + `Ne visose pusėse iki ${SPREAD_KM} km rasta ${filledNets.join(' ir ')} stočių, todėl dalis jų parinkta tiesiog kaip artimiausios.`;
-    if (total > 420) {
-      return setStatus('jg-status', `Per daug duomenų vienam kartui (${list.length} stotys × ${days.length} d.). Visoms stotims rinkitės iki 7 dienų, o nurodžius draudimo vietą ir 2–4 artimiausias stotis – iki ${Math.floor(420 / list.filter(s => s.src !== 'road').length)} dienų.`, true);
+    // Riba: parinktoms stotims – iki ~1100 stoties dienų (1–3 stotys – visi metai, kaip patikroje),
+    // visoms stotims – iki 420 (apie savaitė).
+    const limit = mode === 'all' ? 420 : 1110;
+    if (total > limit) {
+      const nL = list.filter(s => s.src !== 'road').length;
+      return setStatus('jg-status', mode === 'all'
+        ? `Per daug duomenų vienam kartui (${nL} stotys × ${days.length} d.). Visoms stotims rinkitės iki 7 dienų arba nurodykite draudimo vietą ir 1–3 artimiausias stotis – tada galima iki metų.`
+        : `Per daug duomenų vienam kartui (${nL} stotys × ${days.length} d.). Su ${nL} stotimis rinkitės iki ${Math.floor(limit / nL) - 1} dienų; visiems metams rinkitės 1–3 stotis.`, true);
     }
     const u = new URL(location.href);
     u.searchParams.set('nuo', from); u.searchParams.set('iki', to);
@@ -1340,7 +1348,8 @@ async function runJegos(opts = {}) {
       if (s.src === 'road') jobs.push(...roadJobs(si, s, S - 12 * H, E));
       else days.forEach(d => jobs.push({ si, path: '/stations/' + encodeURIComponent(s.code) + '/observations/' + d }));
     });
-    const res = await pool(jobs, 4, j => j.road ? eismoApi(j.path) : paced(j.path), (done, n) => {
+    // Jei pradėtas naujas vertinimas, šio likusios užklausos nebesiunčiamos.
+    const res = await pool(jobs, 4, j => run !== jgRun ? null : j.road ? eismoApi(j.path) : paced(j.path), (done, n) => {
       if (run !== jgRun) return;
       const left = Math.max(0, Math.round((n - done) * 0.4));
       setStatus('jg-status', `Įkeliami stebėjimai: ${done} / ${n}` + (n - done > 20 ? ` (liko apie ${left} s)` : ''));
@@ -1450,18 +1459,20 @@ function showJegosDetail(code) {
   document.getElementById('jg-dtitle').textContent = r.name + ' · ' + srcLabel(r) + (r.dist != null ? ` (${num(r.dist, 0)} km)` : '');
   document.getElementById('jg-drange').textContent = obs.length ? `${fmtDateTime(new Date(obs[0].ms))} – ${fmtDateTime(new Date(obs[obs.length - 1].ms))}` : 'Šiuo laikotarpiu stebėjimų nėra';
   document.getElementById('jg-detail').hidden = false;
+  // Ilgam laikotarpiui (pvz. metams) – be animacijos ir glodinimo, kad grafikai pieštųsi greitai.
+  const big = obs.length > 2000, tz = v => big ? 0 : v;
   const labels = obs.map(o => dayNum(new Date(o.ms)) + ' ' + fmtTime(new Date(o.ms)));
   const limitLine = (val, label) => ({ type: 'line', label, data: obs.map(() => val), borderColor: css('--bad'), borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false });
   const base = (yTitle, extraScales = {}) => ({
-    maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, spanGaps: true,
+    maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, spanGaps: true, animation: big ? false : undefined,
     plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
     scales: { x: { ticks: { maxTicksLimit: 7, maxRotation: 0 }, grid: { display: false } }, y: { beginAtZero: true, title: { display: true, text: yTitle } }, ...extraScales }
   });
   drawChart('jg-c-wind', () => ({
     type: 'line',
     data: { labels, datasets: [
-      { label: 'Gūsiai, m/s', data: obs.map(o => o.windGust), borderColor: css('--accent'), backgroundColor: css('--accent-soft'), fill: true, borderWidth: 2, pointRadius: 0, tension: .2 },
-      { label: 'Vid. vėjas, m/s', data: obs.map(o => o.windSpeed), borderColor: css('--muted'), borderWidth: 1.5, pointRadius: 0, tension: .2 },
+      { label: 'Gūsiai, m/s', data: obs.map(o => o.windGust), borderColor: css('--accent'), backgroundColor: css('--accent-soft'), fill: true, borderWidth: 2, pointRadius: 0, tension: tz(.2) },
+      { label: 'Vid. vėjas, m/s', data: obs.map(o => o.windSpeed), borderColor: css('--muted'), borderWidth: 1.5, pointRadius: 0, tension: tz(.2) },
       limitLine(CRIT.gust, 'Audros riba 18 m/s')
     ] },
     options: base('m/s')
@@ -1470,7 +1481,7 @@ function showJegosDetail(code) {
     type: 'bar',
     data: { labels, datasets: [
       { type: 'bar', label: 'Krituliai per val., mm', data: obs.map(o => o.precipitation), backgroundColor: css('--rain'), borderRadius: 2 },
-      { type: 'line', label: 'Suma per 6 val., mm', data: obs.map(o => o.rain6 ?? null), borderColor: css('--accent'), borderWidth: 2, pointRadius: 0, tension: .2 },
+      { type: 'line', label: 'Suma per 6 val., mm', data: obs.map(o => o.rain6 ?? null), borderColor: css('--accent'), borderWidth: 2, pointRadius: 0, tension: tz(.2) },
       limitLine(CRIT.rain6h, 'Liūties riba 15 mm')
     ] },
     options: base('mm')
@@ -1485,8 +1496,8 @@ function showJegosDetail(code) {
   drawChart('jg-c-snow', () => ({
     type: 'line',
     data: { labels, datasets: [
-      { label: 'Temperatūra, °C', data: obs.map(o => o.airTemperature), yAxisID: hasSnow ? 'y2' : 'y', borderColor: css('--warm'), borderWidth: 2, pointRadius: 0, tension: .3 },
-      ...(hasSnow ? [{ label: 'Sniego danga, cm', data: obs.map(o => o.snowDepth), yAxisID: 'y', borderColor: css('--ink'), backgroundColor: css('--accent-soft'), fill: true, borderWidth: 1.5, pointRadius: 2 }] : [])
+      { label: 'Temperatūra, °C', data: obs.map(o => o.airTemperature), yAxisID: hasSnow ? 'y2' : 'y', borderColor: css('--warm'), borderWidth: 2, pointRadius: 0, tension: tz(.3) },
+      ...(hasSnow ? [{ label: 'Sniego danga, cm', data: obs.map(o => o.snowDepth), yAxisID: 'y', borderColor: css('--ink'), backgroundColor: css('--accent-soft'), fill: true, borderWidth: 1.5, pointRadius: big ? 0 : 2 }] : [])
     ] },
     options: (() => {
       const o = base(hasSnow ? 'cm' : '°C', hasSnow ? { y2: { position: 'right', title: { display: true, text: '°C' }, grid: { display: false } } } : {});
@@ -1624,7 +1635,7 @@ async function runPatikra() {
       } else utcDays.forEach(d => jobs.push({ si, path: '/stations/' + encodeURIComponent(s.code) + '/observations/' + d }));
     });
     const t0 = Date.now();
-    const res = await pool(jobs, 6, j => j.road ? eismoApi(j.path) : paced(j.path), (done, total) => {
+    const res = await pool(jobs, 6, j => run !== pkRun ? null : j.road ? eismoApi(j.path) : paced(j.path), (done, total) => {
       if (run !== pkRun) return;
       setProgress(done / total);
       const el = (Date.now() - t0) / 1000, eta = done > 10 ? Math.round(el / done * (total - done)) : null;
@@ -1784,8 +1795,8 @@ document.querySelector('#pk-table tbody').addEventListener('click', e => {
   document.getElementById('jg-place').value = pkMeta.place ? pkMeta.place.name
     : `${pkMeta.coords.latitude.toFixed(4)}, ${pkMeta.coords.longitude.toFixed(4)}`;
   const nL = pkMeta.list.filter(s => s.src !== 'road').length, nR = pkMeta.list.filter(s => s.src === 'road').length;
-  document.getElementById('jg-mode').value = String(Math.min(4, Math.max(2, nL)));
-  document.getElementById('jg-road').value = nR ? String(Math.min(4, Math.max(2, nR))) : '0';
+  document.getElementById('jg-mode').value = String(Math.min(4, Math.max(1, nL)));
+  document.getElementById('jg-road').value = nR ? String(Math.min(4, Math.max(1, nR))) : '0';
   document.getElementById('jg-pick').value = pkMeta.pickMode || 'near';
   history.replaceState(null, '', '#gamta');
   openTab('gamta');
